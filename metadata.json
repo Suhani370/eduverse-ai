@@ -1,0 +1,6 @@
+{
+  "name": "EduVerse AI",
+  "description": "Learn Anything. Understand Everything. Production-quality AI educational platform with multi-level explanations, interactive visualizations, notes generation, quizzes, code execution, and multilingual learning.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
