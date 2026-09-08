@@ -141,6 +141,30 @@ export interface QuizResult {
   completedAt: string;
 }
 
+export interface ThreeDObject {
+  name: string;
+  type: 'sphere' | 'box' | 'cylinder' | 'ring' | 'orbit' | 'node';
+  color: string;
+  position: [number, number, number];
+  scale?: [number, number, number];
+  label?: string;
+}
+
+export interface ThreeDSceneData {
+  needed: boolean;
+  type: 'molecule' | 'solar_system' | 'atom' | 'neural_network' | 'geometry' | 'anatomy' | 'generic';
+  title: string;
+  description: string;
+  objects: ThreeDObject[];
+}
+
+export interface DryRunTraceStep {
+  stepNumber: number;
+  variableState: Record<string, string | number | boolean>;
+  explanation: string;
+  highlightLine?: number;
+}
+
 export interface StructuredEducationalResponse {
   id: string;
   query: string;
@@ -148,6 +172,30 @@ export interface StructuredEducationalResponse {
   language: SupportedLanguage;
   educationLevel: EducationLevel;
   responseStyle: ResponseStyle;
+  
+  // Intelligent Classification
+  detectedIntent?:
+    | 'explain'
+    | 'summary'
+    | 'notes'
+    | 'quiz'
+    | 'practice'
+    | 'flashcards'
+    | 'code'
+    | 'dry_run'
+    | 'visualize'
+    | '3d_visualize'
+    | 'compare'
+    | 'formula'
+    | 'derivation'
+    | 'example'
+    | 'interview'
+    | 'exam_preparation'
+    | 'document_qa'
+    | 'follow_up';
+  detectedSubject?: string;
+  detectedTopic?: string;
+  confidence?: 'high' | 'medium' | 'grounded';
   
   // Structured Sections
   quickAnswer: string;
@@ -161,8 +209,22 @@ export interface StructuredEducationalResponse {
   
   // Optional Deep Modules
   visualization?: VisualizationData;
+  threeDData?: ThreeDSceneData;
   codeBlock?: CodeExplanationBlock;
+  dryRun?: DryRunTraceStep[];
   comparison?: ComparisonBlock;
+  
+  // Study Payloads
+  summaryPayload?: {
+    oneLine: string;
+    bulletPoints: string[];
+    detailedSummary?: string;
+  };
+  notesPayload?: StudyNote;
+  quizPayload?: {
+    topic: string;
+    questions: QuizQuestion[];
+  };
   
   keyPoints: string[];
   commonMistakes: {

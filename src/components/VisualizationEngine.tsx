@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   Check,
@@ -21,41 +21,18 @@ import {
   Waves,
   Wind,
   Zap,
+  Box,
+  Globe,
+  Network,
+  Activity,
+  Gauge
 } from 'lucide-react';
-
-interface VisualizationNode {
-  id: string;
-  label: string;
-  sublabel?: string;
-  icon?: string;
-  color?: string;
-}
-
-interface VisualizationEdge {
-  from: string;
-  to: string;
-  label?: string;
-}
-
-interface VisualizationStep {
-  stepNumber: number;
-  title: string;
-  description: string;
-  analogy?: string;
-}
-
-interface VisualizationData {
-  type?: string;
-  title?: string;
-  description?: string;
-  nodes?: VisualizationNode[];
-  edges?: VisualizationEdge[];
-  steps?: VisualizationStep[];
-}
+import { VisualizationData, VisualNode, VisualizationStep, ThreeDSceneData } from '../types';
 
 interface VisualizationEngineProps {
   data: VisualizationData;
   queryTopic?: string;
+  threeDData?: ThreeDSceneData;
 }
 
 const iconMap: Record<string, React.ElementType> = {
@@ -74,6 +51,10 @@ const iconMap: Record<string, React.ElementType> = {
   Wind,
   Waves,
   Heart,
+  Box,
+  Globe,
+  Network,
+  Activity,
 };
 
 const fallbackColors = [
@@ -90,535 +71,234 @@ const getIcon = (icon?: string) => {
   return iconMap[icon] || Sparkles;
 };
 
-const normalizeTopic = (value = '') =>
-  value
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .trim();
-
-type VisualMode =
-  | 'photosynthesis'
-  | 'binary-search'
-  | 'tcp'
-  | 'dna'
-  | 'heart'
-  | 'generic';
-
-const detectVisualMode = (
-  queryTopic: string,
-  data: VisualizationData,
-): VisualMode => {
-  const text = normalizeTopic(
-    `${queryTopic} ${data.title || ''} ${data.description || ''}`,
-  );
-
-  if (
-    text.includes('photosynthesis') ||
-    text.includes('photosynthesis process')
-  ) {
-    return 'photosynthesis';
-  }
-
-  if (
-    text.includes('binary search') ||
-    text.includes('binary-search') ||
-    text.includes('binarysearch')
-  ) {
-    return 'binary-search';
-  }
-
-  if (
-    text.includes('tcp') ||
-    text.includes('udp') ||
-    text.includes('network handshake') ||
-    text.includes('three way handshake')
-  ) {
-    return 'tcp';
-  }
-
-  if (
-    text.includes('dna') ||
-    text.includes('double helix') ||
-    text.includes('genetics')
-  ) {
-    return 'dna';
-  }
-
-  if (
-    text.includes('heart') ||
-    text.includes('cardiac') ||
-    text.includes('blood circulation')
-  ) {
-    return 'heart';
-  }
-
-  return 'generic';
-};
-
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(Math.max(value, min), max);
+const clamp = (val: number, min: number, max: number) =>
+  Math.min(Math.max(val, min), max);
 
 /* -------------------------------------------------------------------------- */
-/*                         VISUAL SCENE COMPONENTS                            */
+/*                         DOMAIN-SPECIFIC 2D SCENES                          */
 /* -------------------------------------------------------------------------- */
 
+/** 1. Photosynthesis Scene */
 const PhotosynthesisScene: React.FC<{ step: number }> = ({ step }) => {
   const stage = clamp(step, 0, 3);
-
   return (
-    <div className="relative min-h-[310px] overflow-hidden rounded-3xl border border-emerald-400/10 bg-gradient-to-br from-[#071a1b] via-[#071322] to-[#10142d] p-5">
-      <div className="absolute inset-0 opacity-20">
-        <div className="absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500 blur-3xl" />
-      </div>
-
-      {/* Sun */}
-      <div
-        className={`absolute right-8 top-7 transition-all duration-700 ${
-          stage >= 1 ? 'scale-110 opacity-100' : 'scale-90 opacity-40'
-        }`}
-      >
-        <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-yellow-300 shadow-[0_0_55px_rgba(250,204,21,.45)]">
-          <Sun className="h-10 w-10 text-yellow-700" />
-        </div>
-
-        {stage >= 1 && (
-          <>
-            <span className="absolute left-1/2 top-20 h-28 w-1 origin-top -rotate-12 animate-pulse bg-gradient-to-b from-yellow-300/80 to-transparent" />
-            <span className="absolute left-1/2 top-20 h-28 w-1 origin-top rotate-12 animate-pulse bg-gradient-to-b from-yellow-300/80 to-transparent" />
-          </>
-        )}
-      </div>
-
-      {/* CO2 */}
-      <div
-        className={`absolute left-8 top-12 transition-all duration-700 ${
-          stage >= 1 ? 'translate-x-3 opacity-100' : 'opacity-50'
-        }`}
-      >
-        <div className="rounded-2xl border border-cyan-400/30 bg-cyan-400/10 px-4 py-3">
-          <div className="text-[9px] font-bold uppercase tracking-widest text-cyan-300">
-            From air
-          </div>
-          <div className="mt-1 text-lg font-black text-white">CO₂</div>
+    <div className="relative min-h-[300px] rounded-2xl bg-gradient-to-br from-[#06191c] via-[#081729] to-[#0f142b] p-5 border border-emerald-500/20 overflow-hidden select-none">
+      <div className="absolute right-6 top-6 transition-all duration-700">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-400 shadow-[0_0_40px_rgba(251,191,36,0.6)]">
+          <Sun className="h-8 w-8 text-amber-950 animate-spin" style={{ animationDuration: '20s' }} />
         </div>
       </div>
 
-      {/* Water */}
-      <div
-        className={`absolute bottom-12 left-7 transition-all duration-700 ${
-          stage >= 1 ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-40'
-        }`}
-      >
-        <div className="rounded-2xl border border-blue-400/30 bg-blue-400/10 px-4 py-3">
-          <div className="text-[9px] font-bold uppercase tracking-widest text-blue-300">
-            From roots
-          </div>
-          <div className="mt-1 flex items-center gap-2 text-lg font-black text-white">
-            <Waves className="h-4 w-4 text-blue-400" />
-            H₂O
-          </div>
+      <div className="grid grid-cols-2 gap-4 max-w-sm">
+        <div className={`p-3 rounded-xl border transition-all duration-500 ${stage >= 1 ? 'bg-cyan-950/60 border-cyan-400/40 text-cyan-200' : 'bg-slate-900/40 border-slate-800 text-slate-500'}`}>
+          <div className="text-[10px] font-bold uppercase tracking-wider">Atmosphere</div>
+          <div className="text-sm font-black mt-0.5">CO₂ (Carbon Dioxide)</div>
+        </div>
+
+        <div className={`p-3 rounded-xl border transition-all duration-500 ${stage >= 1 ? 'bg-blue-950/60 border-blue-400/40 text-blue-200' : 'bg-slate-900/40 border-slate-800 text-slate-500'}`}>
+          <div className="text-[10px] font-bold uppercase tracking-wider">Roots / Soil</div>
+          <div className="text-sm font-black mt-0.5">H₂O (Water)</div>
         </div>
       </div>
 
-      {/* Plant */}
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2">
-        <div className="relative h-48 w-48">
-          {/* stem */}
-          <div className="absolute bottom-0 left-1/2 h-36 w-2 -translate-x-1/2 rounded-full bg-emerald-500" />
-
-          {/* leaves */}
-          <div
-            className={`absolute left-5 top-14 h-20 w-28 -rotate-12 rounded-[100%_0_100%_0] bg-gradient-to-br from-emerald-400 to-green-700 shadow-lg transition-all duration-700 ${
-              stage >= 1 ? 'scale-100' : 'scale-75 opacity-50'
-            }`}
-          />
-
-          <div
-            className={`absolute right-5 top-24 h-20 w-28 rotate-12 rounded-[0_100%_0_100%] bg-gradient-to-br from-green-400 to-emerald-700 shadow-lg transition-all duration-700 ${
-              stage >= 1 ? 'scale-100' : 'scale-75 opacity-50'
-            }`}
-          />
-
-          {/* chloroplast */}
-          {stage >= 2 && (
-            <div className="absolute left-1/2 top-24 flex h-14 w-20 -translate-x-1/2 items-center justify-center rounded-xl border border-green-300/40 bg-green-400/10 text-[9px] font-black uppercase tracking-widest text-green-300 shadow-[0_0_25px_rgba(34,197,94,.25)]">
-              Chloroplast
+      <div className="mt-8 flex items-center justify-center">
+        <div className={`p-5 rounded-2xl border transition-all duration-700 max-w-md w-full text-center ${stage >= 2 ? 'bg-emerald-950/70 border-emerald-400/60 shadow-[0_0_30px_rgba(16,185,129,0.25)]' : 'bg-slate-900/40 border-slate-800'}`}>
+          <div className="text-xs font-bold text-emerald-400 uppercase tracking-widest">
+            {stage < 2 ? 'Thylakoid Membrane Awaiting Energy' : 'Chloroplast Stroma (Light & Calvin Cycle)'}
+          </div>
+          <div className="text-sm sm:text-base font-extrabold text-white mt-2 font-mono">
+            6CO₂ + 6H₂O + Light Energy → C₆H₁₂O₆ + 6O₂
+          </div>
+          {stage >= 3 && (
+            <div className="mt-3 flex items-center justify-center gap-3">
+              <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/40">
+                ✓ Glucose (Energy)
+              </span>
+              <span className="px-2.5 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 text-xs font-bold border border-cyan-500/40">
+                ✓ O₂ Released
+              </span>
             </div>
           )}
         </div>
       </div>
-
-      {/* Output */}
-      <div
-        className={`absolute bottom-9 right-6 transition-all duration-700 ${
-          stage >= 3
-            ? 'translate-y-0 scale-100 opacity-100'
-            : 'translate-y-4 scale-90 opacity-30'
-        }`}
-      >
-        <div className="space-y-2">
-          <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-center">
-            <div className="text-[8px] uppercase tracking-widest text-amber-300">
-              Food
-            </div>
-            <div className="text-sm font-black text-white">Glucose 🍬</div>
-          </div>
-
-          <div className="rounded-xl border border-sky-400/30 bg-sky-400/10 px-3 py-2 text-center">
-            <div className="text-[8px] uppercase tracking-widest text-sky-300">
-              Released
-            </div>
-            <div className="text-sm font-black text-white">O₂ 💨</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Stage labels */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-white/10 bg-black/30 px-4 py-2 text-[9px] font-bold uppercase tracking-widest text-slate-400 backdrop-blur">
-        {stage === 0 && 'Inputs'}
-        {stage === 1 && 'Light + Raw Materials'}
-        {stage === 2 && 'Chloroplast Processing'}
-        {stage === 3 && 'Glucose + Oxygen'}
-      </div>
     </div>
   );
 };
 
-const BinarySearchScene: React.FC<{ step: number }> = ({ step }) => {
-  const values = [3, 8, 12, 17, 24, 31, 42, 56, 71];
-  const target = 42;
-
-  const ranges = [
-    [0, 8],
-    [5, 8],
-    [6, 8],
-    [6, 6],
-  ];
-
-  const [left, right] = ranges[clamp(step, 0, ranges.length - 1)];
-  const middle = Math.floor((left + right) / 2);
-
-  return (
-    <div className="rounded-3xl border border-indigo-400/10 bg-gradient-to-br from-[#080d26] to-[#111936] p-5">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-[9px] font-bold uppercase tracking-widest text-indigo-300">
-            Binary Search
-          </div>
-          <div className="mt-1 text-sm font-bold text-white">
-            Find target <span className="text-cyan-300">{target}</span>
-          </div>
-        </div>
-
-        <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-[10px] font-bold text-cyan-300">
-          Sorted Array
-        </div>
-      </div>
-
-      <div className="flex flex-wrap justify-center gap-2">
-        {values.map((value, index) => {
-          const isMiddle = index === middle;
-          const eliminated = index < left || index > right;
-          const found = value === target && step >= 3;
-
-          return (
-            <div
-              key={value}
-              className={`relative flex h-14 w-14 items-center justify-center rounded-2xl border text-sm font-black transition-all duration-700 ${
-                found
-                  ? 'scale-110 border-emerald-400 bg-emerald-400/20 text-emerald-300 shadow-[0_0_30px_rgba(34,197,94,.3)]'
-                  : isMiddle
-                  ? 'scale-110 border-indigo-400 bg-indigo-500/20 text-white shadow-[0_0_30px_rgba(99,102,241,.3)]'
-                  : eliminated
-                  ? 'border-white/5 bg-white/[0.02] text-slate-700'
-                  : 'border-white/10 bg-white/5 text-slate-200'
-              }`}
-            >
-              {value}
-
-              {isMiddle && !found && (
-                <span className="absolute -top-6 text-[8px] font-bold uppercase tracking-wider text-indigo-300">
-                  middle
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="mt-7 grid grid-cols-3 gap-2 text-center">
-        <div className="rounded-xl bg-white/5 p-3">
-          <div className="text-[8px] uppercase tracking-widest text-slate-500">
-            Left
-          </div>
-          <div className="mt-1 text-sm font-black text-white">{left}</div>
-        </div>
-
-        <div className="rounded-xl bg-indigo-500/10 p-3">
-          <div className="text-[8px] uppercase tracking-widest text-indigo-300">
-            Middle
-          </div>
-          <div className="mt-1 text-sm font-black text-indigo-200">
-            {middle}
-          </div>
-        </div>
-
-        <div className="rounded-xl bg-white/5 p-3">
-          <div className="text-[8px] uppercase tracking-widest text-slate-500">
-            Right
-          </div>
-          <div className="mt-1 text-sm font-black text-white">{right}</div>
-        </div>
-      </div>
-
-      <div className="mt-4 text-center text-xs text-slate-400">
-        {step === 0 && 'Start with the complete search range.'}
-        {step === 1 && '42 is greater than the middle value, so ignore the left half.'}
-        {step === 2 && 'The search range becomes smaller.'}
-        {step >= 3 && 'Target 42 found! Binary search reduces the work logarithmically.'}
-      </div>
-    </div>
-  );
-};
-
+/** 2. TCP 3-Way Handshake Scene */
 const TcpScene: React.FC<{ step: number }> = ({ step }) => {
   const stage = clamp(step, 0, 3);
+  return (
+    <div className="relative min-h-[300px] rounded-2xl bg-gradient-to-br from-[#080d24] via-[#09122c] to-[#0c1938] p-5 border border-indigo-500/20 overflow-hidden select-none flex flex-col justify-between">
+      <div className="flex items-center justify-between px-6">
+        <div className="flex flex-col items-center">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-600/30 border border-indigo-400/40 text-indigo-300 flex items-center justify-center shadow-lg">
+            <Zap className="w-6 h-6" />
+          </div>
+          <span className="text-xs font-bold text-white mt-1.5">Client (Initiator)</span>
+          <span className="text-[10px] text-indigo-300 font-mono">Port: 54321</span>
+        </div>
 
-  const messages = [
-    'Client → Server: SYN',
-    'Server → Client: SYN + ACK',
-    'Client → Server: ACK',
-    'Connection established',
+        <div className="flex flex-col items-center">
+          <div className="w-12 h-12 rounded-2xl bg-cyan-600/30 border border-cyan-400/40 text-cyan-300 flex items-center justify-center shadow-lg">
+            <Server className="w-6 h-6" />
+          </div>
+          <span className="text-xs font-bold text-white mt-1.5">Server (Receiver)</span>
+          <span className="text-[10px] text-cyan-300 font-mono">Port: 80 / 443</span>
+        </div>
+      </div>
+
+      <div className="my-4 space-y-2.5 max-w-lg mx-auto w-full">
+        <div className={`p-2.5 rounded-xl border text-xs font-mono transition-all duration-500 flex items-center justify-between ${stage >= 1 ? 'bg-amber-500/20 border-amber-400/50 text-amber-200' : 'opacity-20 border-slate-800'}`}>
+          <span className="font-bold">1. SYN (Seq=100)</span>
+          <span className="text-[11px] text-amber-300">Client → Server</span>
+        </div>
+
+        <div className={`p-2.5 rounded-xl border text-xs font-mono transition-all duration-500 flex items-center justify-between ${stage >= 2 ? 'bg-cyan-500/20 border-cyan-400/50 text-cyan-200' : 'opacity-20 border-slate-800'}`}>
+          <span className="font-bold">2. SYN-ACK (Seq=300, Ack=101)</span>
+          <span className="text-[11px] text-cyan-300">Server → Client</span>
+        </div>
+
+        <div className={`p-2.5 rounded-xl border text-xs font-mono transition-all duration-500 flex items-center justify-between ${stage >= 3 ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200' : 'opacity-20 border-slate-800'}`}>
+          <span className="font-bold">3. ACK (Ack=301)</span>
+          <span className="text-[11px] text-emerald-300">Client → Server</span>
+        </div>
+      </div>
+
+      <div className="text-center">
+        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all ${stage >= 3 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm' : 'bg-slate-800 text-slate-400'}`}>
+          {stage >= 3 ? '✓ Socket Connection ESTABLISHED' : 'Handshake in Progress...'}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+/** 3. Binary Search Scene */
+const BinarySearchScene: React.FC<{ step: number }> = ({ step }) => {
+  const stage = clamp(step, 0, 3);
+  const arr = [2, 5, 8, 12, 16, 23, 38, 56, 72, 91];
+  const target = 23;
+
+  let low = 0;
+  let high = arr.length - 1;
+  let mid = 4;
+
+  if (stage === 1) {
+    low = 0; high = 9; mid = 4; // arr[4] = 16 < 23
+  } else if (stage === 2) {
+    low = 5; high = 9; mid = 7; // arr[7] = 56 > 23
+  } else if (stage >= 3) {
+    low = 5; high = 6; mid = 5; // arr[5] = 23 MATCH
+  }
+
+  return (
+    <div className="relative min-h-[300px] rounded-2xl bg-gradient-to-br from-[#081024] via-[#0a1836] to-[#0c1e40] p-5 border border-cyan-500/20 select-none flex flex-col justify-between">
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-bold text-cyan-300">Searching for Target: <strong className="text-white text-sm font-mono">{target}</strong></span>
+        <span className="text-slate-400 text-[11px] font-mono">Time: O(log N)</span>
+      </div>
+
+      <div className="my-6 overflow-x-auto pb-2">
+        <div className="flex items-center justify-center gap-2 min-w-max">
+          {arr.map((val, idx) => {
+            const isMid = idx === mid;
+            const isLow = idx === low;
+            const isHigh = idx === high;
+            const isInRange = idx >= low && idx <= high;
+            const isFound = stage >= 3 && idx === 5;
+
+            return (
+              <div key={idx} className="flex flex-col items-center">
+                <div className="h-5 text-[10px] font-bold text-cyan-400 font-mono">
+                  {isLow && 'L'} {isMid && 'M'} {isHigh && 'H'}
+                </div>
+                <div className={`w-10 h-12 rounded-xl border flex items-center justify-center font-mono font-bold text-sm transition-all duration-500 ${
+                  isFound
+                    ? 'bg-emerald-600 text-white border-emerald-400 scale-110 shadow-lg shadow-emerald-500/30'
+                    : isMid
+                    ? 'bg-amber-500 text-black border-amber-300 scale-105'
+                    : isInRange
+                    ? 'bg-slate-800 text-white border-slate-600'
+                    : 'bg-slate-900/40 text-slate-600 border-slate-800/60'
+                }`}>
+                  {val}
+                </div>
+                <span className="text-[9px] text-slate-500 mt-1 font-mono">{idx}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-xs text-center font-mono text-cyan-200">
+        {stage === 0 && 'Initial sorted array with bounds [low = 0, high = 9]'}
+        {stage === 1 && 'Iteration 1: mid = 4 (value: 16). 16 < 23 → Discard left half, set low = 5.'}
+        {stage === 2 && 'Iteration 2: mid = 7 (value: 56). 56 > 23 → Discard right half, set high = 6.'}
+        {stage >= 3 && 'Iteration 3: mid = 5 (value: 23). Match found! Returned index 5.'}
+      </div>
+    </div>
+  );
+};
+
+/** 4. Linked List Scene */
+const LinkedListScene: React.FC<{ step: number }> = ({ step }) => {
+  const stage = clamp(step, 0, 3);
+  const nodes = [
+    { id: 1, val: 'Head: 10' },
+    { id: 2, val: 'Node: 20' },
+    { id: 3, val: 'Node: 30' },
+    { id: 4, val: 'Tail: 40' },
   ];
 
   return (
-    <div className="rounded-3xl border border-cyan-400/10 bg-gradient-to-br from-[#061522] to-[#081329] p-5">
-      <div className="mb-6 text-center">
-        <div className="text-[9px] font-bold uppercase tracking-widest text-cyan-300">
-          Network visualization
-        </div>
-        <div className="mt-1 text-sm font-bold text-white">
-          TCP Three-Way Handshake
-        </div>
+    <div className="relative min-h-[300px] rounded-2xl bg-gradient-to-br from-[#0b0f2a] via-[#10173b] to-[#121c47] p-5 border border-indigo-500/20 select-none flex flex-col justify-between">
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-bold text-indigo-300">Singly Linked List Traversal & Pointer Update</span>
+        <span className="text-slate-400 text-[11px] font-mono">Access: O(N) • Insert: O(1)</span>
       </div>
 
-      <div className="relative mx-auto max-w-2xl">
-        <div className="flex items-center justify-between">
-          <div className="flex flex-col items-center gap-2">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-indigo-400/30 bg-indigo-400/10">
-              <Database className="h-7 w-7 text-indigo-300" />
-            </div>
-            <span className="text-[10px] font-bold text-slate-400">
-              CLIENT
-            </span>
-          </div>
-
-          <div className="mx-4 flex-1">
-            <div className="relative h-1 rounded-full bg-slate-800">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-indigo-400 via-cyan-400 to-emerald-400 transition-all duration-700"
-                style={{
-                  width: `${(stage / 3) * 100}%`,
-                }}
-              />
-            </div>
-
-            <div className="mt-4 text-center text-[10px] font-bold text-cyan-300">
-              {messages[stage]}
-            </div>
-          </div>
-
-          <div className="flex flex-col items-center gap-2">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-emerald-400/30 bg-emerald-400/10">
-              <Server className="h-7 w-7 text-emerald-300" />
-            </div>
-            <span className="text-[10px] font-bold text-slate-400">
-              SERVER
-            </span>
-          </div>
-        </div>
-
-        <div className="mt-7 grid grid-cols-3 gap-3">
-          {['SYN', 'SYN + ACK', 'ACK'].map((packet, index) => (
-            <div
-              key={packet}
-              className={`rounded-xl border p-3 text-center transition-all duration-500 ${
-                index < stage
-                  ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-300'
-                  : 'border-white/10 bg-white/5 text-slate-600'
-              }`}
-            >
-              <div className="text-[8px] uppercase tracking-widest">
-                Packet {index + 1}
-              </div>
-              <div className="mt-1 text-xs font-black">{packet}</div>
-            </div>
-          ))}
-        </div>
-
-        {stage === 3 && (
-          <div className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-xs font-bold text-emerald-300">
-            <Check className="h-4 w-4" />
-            Secure connection established
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const DnaScene: React.FC<{ step: number }> = ({ step }) => {
-  const pairs = 7;
-  const progress = clamp(step, 0, 3);
-
-  return (
-    <div className="relative overflow-hidden rounded-3xl border border-fuchsia-400/10 bg-gradient-to-br from-[#17071c] via-[#100c23] to-[#06172a] p-5">
-      <div className="mb-4 text-center">
-        <div className="text-[9px] font-bold uppercase tracking-widest text-fuchsia-300">
-          Molecular visualization
-        </div>
-        <div className="mt-1 text-sm font-bold text-white">
-          DNA Double Helix
-        </div>
-      </div>
-
-      <div className="relative mx-auto h-[260px] max-w-[500px]">
-        {Array.from({ length: pairs }).map((_, index) => {
-          const y = 22 + index * 34;
-          const phase = index * 0.85 + progress * 0.8;
-          const left = 50 + Math.sin(phase) * 70;
-          const right = 50 - Math.sin(phase) * 70;
-
+      <div className="my-6 flex items-center justify-center gap-2 overflow-x-auto pb-2 min-w-max">
+        {nodes.map((n, idx) => {
+          const isActive = idx === stage;
           return (
-            <div key={index}>
-              <div
-                className="absolute h-3 w-3 rounded-full bg-fuchsia-400 shadow-[0_0_15px_rgba(232,121,249,.6)] transition-all duration-700"
-                style={{
-                  left: `${left}%`,
-                  top: y,
-                  transform: 'translateX(-50%)',
-                }}
-              />
-
-              <div
-                className="absolute h-3 w-3 rounded-full bg-cyan-400 shadow-[0_0_15px_rgba(34,211,238,.6)] transition-all duration-700"
-                style={{
-                  left: `${right}%`,
-                  top: y,
-                  transform: 'translateX(-50%)',
-                }}
-              />
-
-              <div
-                className="absolute h-[2px] bg-white/30 transition-all duration-700"
-                style={{
-                  left: `${Math.min(left, right)}%`,
-                  top: y + 5,
-                  width: `${Math.abs(left - right)}%`,
-                }}
-              />
-            </div>
+            <React.Fragment key={n.id}>
+              <div className={`p-3.5 rounded-2xl border font-mono transition-all duration-500 flex flex-col items-center ${
+                isActive
+                  ? 'bg-indigo-600 text-white border-indigo-400 scale-105 shadow-lg shadow-indigo-600/30'
+                  : 'bg-slate-900/60 text-slate-300 border-slate-800'
+              }`}>
+                <span className="text-xs font-extrabold">{n.val}</span>
+                <span className="text-[9px] text-indigo-200 mt-1">next → {idx < nodes.length - 1 ? '0x' + (idx + 2) : 'NULL'}</span>
+              </div>
+              {idx < nodes.length - 1 && (
+                <ArrowRight className={`w-5 h-5 shrink-0 ${idx < stage ? 'text-cyan-400' : 'text-slate-600'}`} />
+              )}
+            </React.Fragment>
           );
         })}
-
-        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded-full border border-white/10 bg-black/30 px-4 py-2 text-[9px] font-bold uppercase tracking-widest text-slate-400 backdrop-blur">
-          A • T • G • C base pairs
-        </div>
       </div>
 
-      <div className="mt-3 flex justify-center gap-4 text-[9px] font-bold uppercase tracking-widest">
-        <span className="flex items-center gap-1.5 text-fuchsia-300">
-          <span className="h-2 w-2 rounded-full bg-fuchsia-400" />
-          Strand A
-        </span>
-
-        <span className="flex items-center gap-1.5 text-cyan-300">
-          <span className="h-2 w-2 rounded-full bg-cyan-400" />
-          Strand B
-        </span>
+      <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-xs text-center font-mono text-indigo-200">
+        Current Pointer: <strong className="text-white">Node {stage + 1}</strong> (Memory Address: 0x{stage + 1}A4F)
       </div>
     </div>
   );
 };
 
-const HeartScene: React.FC<{ step: number }> = ({ step }) => {
-  const stage = clamp(step, 0, 3);
-
-  return (
-    <div className="rounded-3xl border border-rose-400/10 bg-gradient-to-br from-[#210a17] to-[#0d1128] p-5">
-      <div className="mb-5 text-center">
-        <div className="text-[9px] font-bold uppercase tracking-widest text-rose-300">
-          Biological visualization
-        </div>
-        <div className="mt-1 text-sm font-bold text-white">
-          Blood Flow Through the Heart
-        </div>
-      </div>
-
-      <div className="relative mx-auto h-[260px] max-w-[550px]">
-        <div
-          className={`absolute left-1/2 top-1/2 flex h-36 w-36 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[45%_55%_48%_52%] border-2 border-rose-400/30 bg-rose-500/10 shadow-[0_0_60px_rgba(244,63,94,.18)] transition-transform duration-500 ${
-            stage % 2 === 1 ? 'scale-110' : 'scale-100'
-          }`}
-        >
-          <Heart className="h-20 w-20 fill-rose-500/20 text-rose-400" />
-        </div>
-
-        <div
-          className={`absolute left-4 top-12 rounded-xl border border-blue-400/20 bg-blue-400/10 px-4 py-3 transition-all duration-700 ${
-            stage >= 0 ? 'opacity-100' : 'opacity-30'
-          }`}
-        >
-          <div className="text-[8px] uppercase tracking-widest text-blue-300">
-            From body
-          </div>
-          <div className="mt-1 text-xs font-black text-white">
-            Deoxygenated
-          </div>
-        </div>
-
-        <div
-          className={`absolute right-4 top-12 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 transition-all duration-700 ${
-            stage >= 2 ? 'opacity-100' : 'opacity-30'
-          }`}
-        >
-          <div className="text-[8px] uppercase tracking-widest text-red-300">
-            To body
-          </div>
-          <div className="mt-1 text-xs font-black text-white">
-            Oxygenated
-          </div>
-        </div>
-
-        <div className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-xl border border-white/10 bg-white/5 px-5 py-3 text-center">
-          <div className="text-[8px] uppercase tracking-widest text-slate-500">
-            Current stage
-          </div>
-          <div className="mt-1 text-xs font-black text-white">
-            {stage === 0 && 'Receiving blood'}
-            {stage === 1 && 'Pumping to lungs'}
-            {stage === 2 && 'Receiving oxygenated blood'}
-            {stage === 3 && 'Pumping to body'}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
+/** 5. Generic Dynamic Multi-Node Graph Scene */
 const GenericScene: React.FC<{
-  nodes: VisualizationNode[];
+  nodes: VisualNode[];
   activeStep: number;
-  onSelect: (node: VisualizationNode) => void;
-  selectedNode: VisualizationNode | null;
+  onSelect: (node: VisualNode) => void;
+  selectedNode: VisualNode | null;
 }> = ({ nodes, activeStep, onSelect, selectedNode }) => {
   return (
-    <div className="overflow-x-auto rounded-3xl border border-indigo-400/10 bg-gradient-to-br from-[#070b22] to-[#10152e] p-5">
-      <div className="flex min-w-[720px] items-center justify-center gap-3">
+    <div className="overflow-x-auto rounded-2xl border border-indigo-400/20 bg-gradient-to-br from-[#070b22] to-[#10152e] p-5">
+      <div className="flex min-w-max items-center justify-center gap-3">
         {nodes.map((node, index) => {
           const Icon = getIcon(node.icon);
-          const color =
-            node.color || fallbackColors[index % fallbackColors.length];
+          const color = node.color || fallbackColors[index % fallbackColors.length];
           const active = index <= activeStep;
           const selected = selectedNode?.id === node.id;
 
@@ -627,64 +307,43 @@ const GenericScene: React.FC<{
               <button
                 type="button"
                 onClick={() => onSelect(node)}
-                className={`group relative w-[190px] rounded-2xl border p-4 text-left transition-all duration-500 ${
+                className={`group relative w-[190px] rounded-2xl border p-4 text-left transition-all duration-500 cursor-pointer ${
                   selected
-                    ? 'scale-105 border-indigo-400 bg-indigo-500/15'
+                    ? 'scale-105 border-indigo-400 bg-indigo-500/20 shadow-lg shadow-indigo-950/50'
                     : active
-                    ? 'border-white/20 bg-white/[0.07]'
-                    : 'border-white/10 bg-white/[0.03] opacity-60'
+                    ? 'border-white/20 bg-white/[0.08]'
+                    : 'border-white/10 bg-white/[0.03] opacity-60 hover:opacity-100'
                 }`}
               >
-                <div
-                  className="absolute inset-0 rounded-2xl opacity-10 blur-2xl transition-opacity group-hover:opacity-20"
-                  style={{ backgroundColor: color }}
-                />
-
-                <div className="relative">
-                  <div className="mb-4 flex items-center justify-between">
-                    <div
-                      className="flex h-10 w-10 items-center justify-center rounded-xl"
-                      style={{
-                        backgroundColor: `${color}22`,
-                        color,
-                      }}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </div>
-
-                    <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">
-                      Step {index + 1}
-                    </span>
-                  </div>
-
-                  <div className="text-sm font-black text-white">
-                    {node.label}
-                  </div>
-
-                  <div className="mt-1 min-h-[32px] text-[10px] leading-5 text-slate-400">
-                    {node.sublabel || 'Interactive concept stage'}
-                  </div>
-
+                <div className="flex items-center justify-between mb-3">
                   <div
-                    className="mt-4 h-1 rounded-full transition-all duration-700"
-                    style={{
-                      width: active ? '100%' : '25%',
-                      backgroundColor: active ? color : '#1e293b',
-                    }}
-                  />
+                    className="flex h-10 w-10 items-center justify-center rounded-xl"
+                    style={{ backgroundColor: `${color}22`, color }}
+                  >
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                    Step {index + 1}
+                  </span>
                 </div>
+
+                <div className="text-sm font-bold text-white truncate">{node.label}</div>
+                {node.sublabel && (
+                  <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">{node.sublabel}</div>
+                )}
+
+                <div
+                  className="mt-3.5 h-1 rounded-full transition-all duration-500"
+                  style={{ backgroundColor: active ? color : '#1e293b', width: active ? '100%' : '30%' }}
+                />
               </button>
 
               {index < nodes.length - 1 && (
-                <div className="flex w-12 shrink-0 items-center justify-center">
-                  <ArrowRight
-                    className={`h-5 w-5 transition-colors duration-500 ${
-                      activeStep > index
-                        ? 'text-cyan-400'
-                        : 'text-slate-700'
-                    }`}
-                  />
-                </div>
+                <ArrowRight
+                  className={`w-4 h-4 shrink-0 transition-colors ${
+                    activeStep > index ? 'text-cyan-400' : 'text-slate-700'
+                  }`}
+                />
               )}
             </React.Fragment>
           );
@@ -695,411 +354,390 @@ const GenericScene: React.FC<{
 };
 
 /* -------------------------------------------------------------------------- */
-/*                           MAIN COMPONENT                                   */
+/*                     INTERACTIVE 3D SPATIAL VIEWER                          */
 /* -------------------------------------------------------------------------- */
 
-export const VisualizationEngine: React.FC<
-  VisualizationEngineProps
-> = ({ data, queryTopic = 'Concept' }) => {
-  const nodes = Array.isArray(data?.nodes) ? data.nodes : [];
-  const edges = Array.isArray(data?.edges) ? data.edges : [];
-  const steps = Array.isArray(data?.steps) ? data.steps : [];
+const Interactive3DViewer: React.FC<{
+  sceneData?: ThreeDSceneData;
+  topic?: string;
+}> = ({ sceneData, topic = 'Concept' }) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [rotationX, setRotationX] = useState(0.3);
+  const [rotationY, setRotationY] = useState(0.5);
+  const [zoom, setZoom] = useState(1);
+  const [isAutoRotate, setIsAutoRotate] = useState(true);
+  const isDraggingRef = useRef(false);
+  const lastMouseRef = useRef({ x: 0, y: 0 });
 
-  const safeNodes = useMemo(() => {
-    if (nodes.length > 0) return nodes;
-
-    return [
-      {
-        id: 'input',
-        label: 'Input',
-        sublabel: 'Starting point',
-        icon: 'Zap',
-        color: '#6366f1',
-      },
-      {
-        id: 'process',
-        label: 'Process',
-        sublabel: 'Core mechanism',
-        icon: 'Cpu',
-        color: '#22c55e',
-      },
-      {
-        id: 'output',
-        label: 'Output',
-        sublabel: 'Final result',
-        icon: 'Check',
-        color: '#f59e0b',
-      },
-    ];
-  }, [nodes]);
-
-  const safeSteps: VisualizationStep[] = useMemo(() => {
-    if (steps.length > 0) return steps;
-
-    return safeNodes.map((node, index) => ({
-      stepNumber: index + 1,
-      title: node.label,
-      description:
-        node.sublabel ||
-        `This is step ${index + 1} of the ${queryTopic} process.`,
-      analogy: undefined,
-    }));
-  }, [steps, safeNodes, queryTopic]);
-
-  const visualMode = useMemo(
-    () => detectVisualMode(queryTopic, data),
-    [queryTopic, data],
-  );
-
-  const visualStepCount =
-    visualMode === 'generic' ? safeSteps.length : 4;
-
-  const [activeStep, setActiveStep] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [selectedNode, setSelectedNode] =
-    useState<VisualizationNode | null>(null);
-
+  // 3D Canvas Rendering Loop
   useEffect(() => {
-    setActiveStep(0);
-    setIsPlaying(false);
-    setSelectedNode(null);
-  }, [queryTopic, data.title]);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-  useEffect(() => {
-    if (!isPlaying) return;
+    let animId: number;
 
-    const timer = window.setInterval(() => {
-      setActiveStep((current) => {
-        if (current >= visualStepCount - 1) {
-          setIsPlaying(false);
-          return current;
+    const render = () => {
+      const width = canvas.width;
+      const height = canvas.height;
+      ctx.clearRect(0, 0, width, height);
+
+      // Background Grid Effect
+      ctx.strokeStyle = 'rgba(99, 102, 241, 0.08)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < width; x += 30) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+      }
+      for (let y = 0; y < height; y += 30) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+      }
+
+      const cx = width / 2;
+      const cy = height / 2;
+      const baseScale = 70 * zoom;
+
+      // Draw Orbiting 3D Nodes / Molecule Atoms
+      const objects = sceneData?.objects && sceneData.objects.length > 0
+        ? sceneData.objects
+        : [
+            { name: 'Core Nucleus', type: 'sphere', color: '#6366f1', position: [0, 0, 0], label: topic },
+            { name: 'Orbital A', type: 'sphere', color: '#06b6d4', position: [1.5, 0.8, 0.5], label: 'State A' },
+            { name: 'Orbital B', type: 'sphere', color: '#22c55e', position: [-1.4, -0.6, 0.8], label: 'State B' },
+            { name: 'Orbital C', type: 'sphere', color: '#f59e0b', position: [0.3, 1.6, -1.2], label: 'State C' },
+          ];
+
+      // Sort objects by depth after 3D rotation
+      const projected = objects.map(obj => {
+        const [x, y, z] = obj.position;
+        // Apply 3D Rotation Matrix
+        const cosY = Math.cos(rotationY);
+        const sinY = Math.sin(rotationY);
+        const cosX = Math.cos(rotationX);
+        const sinX = Math.sin(rotationX);
+
+        const x1 = x * cosY + z * sinY;
+        const z1 = -x * sinY + z * cosY;
+        const y1 = y * cosX - z1 * sinX;
+        const z2 = y * sinX + z1 * cosX;
+
+        const screenX = cx + x1 * baseScale;
+        const screenY = cy + y1 * baseScale;
+        const depth = z2;
+
+        return { ...obj, screenX, screenY, depth };
+      }).sort((a, b) => a.depth - b.depth);
+
+      // Draw Connection Struts / Bonds
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+      ctx.lineWidth = 2;
+      const center = projected.find(p => p.position[0] === 0 && p.position[1] === 0) || projected[0];
+
+      projected.forEach(p => {
+        if (p !== center) {
+          ctx.beginPath();
+          ctx.moveTo(center.screenX, center.screenY);
+          ctx.lineTo(p.screenX, p.screenY);
+          ctx.stroke();
         }
-
-        return current + 1;
       });
-    }, 2200);
 
-    return () => window.clearInterval(timer);
-  }, [isPlaying, visualStepCount]);
+      // Draw 3D Spheres & Labels
+      projected.forEach(p => {
+        const radius = Math.max(12, (20 + p.depth * 4) * zoom);
+        ctx.beginPath();
+        ctx.arc(p.screenX, p.screenY, radius, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 15;
+        ctx.fill();
+        ctx.shadowBlur = 0;
 
-  const currentStep =
-    safeSteps[clamp(activeStep, 0, safeSteps.length - 1)] ||
-    safeSteps[0];
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
 
-  const resetVisualization = () => {
-    setIsPlaying(false);
-    setActiveStep(0);
-    setSelectedNode(null);
+        // Label
+        if (p.label) {
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 11px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(p.label, p.screenX, p.screenY + radius + 14);
+        }
+      });
+
+      if (isAutoRotate) {
+        setRotationY(prev => prev + 0.008);
+      }
+
+      animId = requestAnimationFrame(render);
+    };
+
+    render();
+    return () => cancelAnimationFrame(animId);
+  }, [rotationX, rotationY, zoom, isAutoRotate, sceneData, topic]);
+
+  // Mouse drag listeners for 3D rotation
+  const handleMouseDown = (e: React.MouseEvent) => {
+    isDraggingRef.current = true;
+    lastMouseRef.current = { x: e.clientX, y: e.clientY };
   };
 
-  const previousStep = () => {
-    setIsPlaying(false);
-    setActiveStep((current) => Math.max(0, current - 1));
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingRef.current) return;
+    const dx = e.clientX - lastMouseRef.current.x;
+    const dy = e.clientY - lastMouseRef.current.y;
+    setRotationY(prev => prev + dx * 0.01);
+    setRotationX(prev => clamp(prev + dy * 0.01, -1.2, 1.2));
+    lastMouseRef.current = { x: e.clientX, y: e.clientY };
   };
 
-  const nextStep = () => {
-    setIsPlaying(false);
-    setActiveStep((current) =>
-      Math.min(visualStepCount - 1, current + 1),
-    );
-  };
-
-  const isNodeActive = (index: number) => {
-    if (safeSteps.length === 0) return false;
-    return index <= activeStep;
-  };
-
-  const visualTitle = useMemo(() => {
-    switch (visualMode) {
-      case 'photosynthesis':
-        return 'Photosynthesis — Animated Biology';
-      case 'binary-search':
-        return 'Binary Search — Algorithm Animation';
-      case 'tcp':
-        return 'TCP Handshake — Network Animation';
-      case 'dna':
-        return 'DNA — Molecular Visualization';
-      case 'heart':
-        return 'Human Heart — Blood Flow';
-      default:
-        return data.title || `${queryTopic} — Interactive Visual`;
-    }
-  }, [visualMode, data.title, queryTopic]);
-
-  const visualDescription = useMemo(() => {
-    switch (visualMode) {
-      case 'photosynthesis':
-        return 'Watch sunlight, water and carbon dioxide transform into glucose and oxygen.';
-      case 'binary-search':
-        return 'See how binary search repeatedly cuts the search space in half.';
-      case 'tcp':
-        return 'Visualize the three messages used to establish a TCP connection.';
-      case 'dna':
-        return 'Explore the structure of DNA as two complementary strands.';
-      case 'heart':
-        return 'Follow the movement of blood through the heart.';
-      default:
-        return (
-          data.description ||
-          `Step-by-step interactive explanation of ${queryTopic}.`
-        );
-    }
-  }, [visualMode, data.description, queryTopic]);
-
-  const renderSpecialScene = () => {
-    switch (visualMode) {
-      case 'photosynthesis':
-        return <PhotosynthesisScene step={activeStep} />;
-
-      case 'binary-search':
-        return <BinarySearchScene step={activeStep} />;
-
-      case 'tcp':
-        return <TcpScene step={activeStep} />;
-
-      case 'dna':
-        return <DnaScene step={activeStep} />;
-
-      case 'heart':
-        return <HeartScene step={activeStep} />;
-
-      default:
-        return (
-          <GenericScene
-            nodes={safeNodes}
-            activeStep={activeStep}
-            onSelect={setSelectedNode}
-            selectedNode={selectedNode}
-          />
-        );
-    }
+  const handleMouseUp = () => {
+    isDraggingRef.current = false;
   };
 
   return (
-    <section className="w-full overflow-hidden rounded-[28px] border border-slate-800 bg-[#05091c] text-white shadow-2xl">
-      {/* ------------------------------------------------------------------ */}
-      {/* HEADER                                                             */}
-      {/* ------------------------------------------------------------------ */}
+    <div className="relative rounded-2xl bg-gradient-to-br from-[#060a1c] via-[#091129] to-[#0d1633] p-4 border border-indigo-500/20 overflow-hidden">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Box className="w-4 h-4 text-cyan-400" />
+          <span className="text-xs font-bold text-white uppercase tracking-wider">
+            {sceneData?.title || `${topic} 3D Model Explorer`}
+          </span>
+        </div>
 
-      <div className="border-b border-white/10 px-5 py-5 sm:px-7">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0">
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-500/15 text-indigo-400 ring-1 ring-indigo-400/20">
-                <Layers className="h-5 w-5" />
-              </div>
-
-              <h2 className="text-base font-extrabold sm:text-lg">
-                {visualTitle}
-              </h2>
-
-              <span className="rounded-full bg-indigo-500/15 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-indigo-300 ring-1 ring-indigo-400/20">
-                Interactive Visual
-              </span>
-            </div>
-
-            <p className="ml-11 max-w-3xl text-xs leading-relaxed text-slate-400">
-              {visualDescription}
-            </p>
-          </div>
-
-          {/* Controls */}
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={previousStep}
-              disabled={activeStep === 0}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-              title="Previous step"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsPlaying((value) => !value)}
-              className={`flex h-9 items-center gap-2 rounded-xl px-4 text-xs font-bold transition ${
-                isPlaying
-                  ? 'bg-amber-500 text-black'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-500'
-              }`}
-            >
-              {isPlaying ? (
-                <>
-                  <Square className="h-3.5 w-3.5 fill-current" />
-                  Pause
-                </>
-              ) : (
-                <>
-                  <Play className="h-3.5 w-3.5 fill-current" />
-                  Play
-                </>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={nextStep}
-              disabled={activeStep >= visualStepCount - 1}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-              title="Next step"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={resetVisualization}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10"
-              title="Reset"
-            >
-              <RotateCcw className="h-4 w-4" />
-            </button>
-          </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsAutoRotate(prev => !prev)}
+            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+              isAutoRotate ? 'bg-indigo-600 text-white border-indigo-400' : 'bg-slate-800 text-slate-300 border-slate-700'
+            }`}
+          >
+            {isAutoRotate ? 'Auto-Rotate: ON' : 'Auto-Rotate: OFF'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setRotationX(0.3); setRotationY(0.5); setZoom(1); }}
+            className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs cursor-pointer"
+            title="Reset 3D View"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* VISUALIZATION                                                      */}
-      {/* ------------------------------------------------------------------ */}
+      <div
+        className="relative w-full h-[320px] rounded-xl overflow-hidden cursor-grab active:cursor-grabbing border border-slate-800/80 bg-black/40 flex items-center justify-center"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
+        <canvas ref={canvasRef} width={640} height={320} className="w-full h-full" />
+        <div className="absolute bottom-2 left-3 text-[10px] text-slate-400 pointer-events-none select-none">
+          Click & drag to rotate in 3D space
+        </div>
+      </div>
+    </div>
+  );
+};
 
-      <div className="px-4 py-6 sm:px-7 sm:py-8">
-        <div className="mb-4 flex items-center justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-300">
-            {visualMode === 'generic'
-              ? 'Interactive Architecture & Flow'
-              : 'Interactive Concept Visualization'}
-          </span>
+/* -------------------------------------------------------------------------- */
+/*                           MAIN VISUALIZATION ENGINE                        */
+/* -------------------------------------------------------------------------- */
 
-          <span className="text-[10px] text-slate-500">
-            {visualMode === 'generic'
-              ? 'Click a node for details'
-              : 'Use Play to animate'}
-          </span>
+export const VisualizationEngine: React.FC<VisualizationEngineProps> = ({
+  data,
+  queryTopic = 'Concept',
+  threeDData,
+}) => {
+  const [activeTab, setActiveTab] = useState<'2d' | '3d'>('2d');
+  const [activeStep, setActiveStep] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+  const [selectedNode, setSelectedNode] = useState<VisualNode | null>(null);
+
+  const nodes = Array.isArray(data?.nodes) && data.nodes.length > 0 ? data.nodes : [
+    { id: '1', label: 'Initial State', sublabel: 'Starting configuration', icon: 'Zap', color: '#6366f1' },
+    { id: '2', label: 'Mechanism', sublabel: 'Transformation process', icon: 'Cpu', color: '#06b6d4' },
+    { id: '3', label: 'Target State', sublabel: 'Resolved outcome', icon: 'Check', color: '#22c55e' }
+  ];
+
+  const steps: VisualizationStep[] = Array.isArray(data?.steps) && data.steps.length > 0
+    ? data.steps
+    : nodes.map((n, i) => ({
+        stepNumber: i + 1,
+        title: n.label,
+        description: n.sublabel || `Execution phase ${i + 1}`,
+      }));
+
+  // Detect visual domain
+  const topicText = `${queryTopic} ${data?.title || ''}`.toLowerCase();
+  const isTcp = topicText.includes('tcp') || topicText.includes('handshake');
+  const isBinarySearch = topicText.includes('binary search');
+  const isLinkedList = topicText.includes('linked list');
+  const isPhotosynthesis = topicText.includes('photosynthesis');
+
+  // Auto-play timer
+  useEffect(() => {
+    if (!isPlaying) return;
+    const intervalTime = Math.max(1000, 2500 / playbackSpeed);
+
+    const timer = setInterval(() => {
+      setActiveStep(prev => {
+        if (prev >= steps.length - 1) {
+          setIsPlaying(false);
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, intervalTime);
+
+    return () => clearInterval(timer);
+  }, [isPlaying, steps.length, playbackSpeed]);
+
+  const currentStep = steps[activeStep] || steps[0];
+
+  return (
+    <section className="w-full rounded-3xl border border-slate-800 bg-[#05091c] text-white shadow-2xl overflow-hidden my-4" id="visual-learning-engine">
+      {/* Header & Mode Switcher */}
+      <div className="border-b border-white/10 px-5 py-4 bg-slate-950/70 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-400/30">
+            <Layers className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm sm:text-base font-extrabold text-white">
+              {data.title || `${queryTopic} — Visual Flow`}
+            </h3>
+            <p className="text-[11px] text-slate-400">{data.description || 'Interactive animation and architectural diagrams'}</p>
+          </div>
         </div>
 
-        {renderSpecialScene()}
+        {/* 2D / 3D Mode Tabs & Play Controls */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center p-1 rounded-xl bg-slate-900 border border-slate-800">
+            <button
+              type="button"
+              onClick={() => setActiveTab('2d')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                activeTab === '2d' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              2D Stepper
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('3d')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                activeTab === '3d' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              3D Spatial
+            </button>
+          </div>
 
-        {/* ---------------------------------------------------------------- */}
-        {/* CURRENT STEP                                                     */}
-        {/* ---------------------------------------------------------------- */}
+          {activeTab === '2d' && (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setActiveStep(prev => Math.max(0, prev - 1))}
+                disabled={activeStep === 0}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 cursor-pointer"
+                title="Previous step"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
 
-        {currentStep && (
-          <div className="mt-7 rounded-2xl border border-white/10 bg-[#080f24] p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/15 text-indigo-400">
-                  <span className="text-sm font-extrabold">
-                    {activeStep + 1}
-                  </span>
-                </div>
+              <button
+                type="button"
+                onClick={() => setIsPlaying(prev => !prev)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  isPlaying ? 'bg-amber-500 text-black shadow-md' : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                }`}
+              >
+                {isPlaying ? <Square className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                <span>{isPlaying ? 'Pause' : 'Auto Play'}</span>
+              </button>
 
+              <button
+                type="button"
+                onClick={() => setActiveStep(prev => Math.min(steps.length - 1, prev + 1))}
+                disabled={activeStep >= steps.length - 1}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 cursor-pointer"
+                title="Next step"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setActiveStep(0); setIsPlaying(false); }}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer"
+                title="Reset animation"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Main View Area */}
+      <div className="p-5">
+        {activeTab === '3d' ? (
+          <Interactive3DViewer sceneData={threeDData} topic={queryTopic} />
+        ) : (
+          <div className="space-y-4">
+            {/* Domain-Specific Visual Scene */}
+            {isPhotosynthesis ? (
+              <PhotosynthesisScene step={activeStep} />
+            ) : isTcp ? (
+              <TcpScene step={activeStep} />
+            ) : isBinarySearch ? (
+              <BinarySearchScene step={activeStep} />
+            ) : isLinkedList ? (
+              <LinkedListScene step={activeStep} />
+            ) : (
+              <GenericScene
+                nodes={nodes}
+                activeStep={activeStep}
+                onSelect={setSelectedNode}
+                selectedNode={selectedNode}
+              />
+            )}
+
+            {/* Current Step Description Card */}
+            {currentStep && (
+              <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-indigo-400">
-                    Step {activeStep + 1} of {visualStepCount}
+                  <div className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">
+                    Step {currentStep.stepNumber} of {steps.length}: {currentStep.title}
                   </div>
-
-                  <h3 className="mt-1 text-sm font-extrabold text-white sm:text-base">
-                    {currentStep.title}
-                  </h3>
-
-                  <p className="mt-2 max-w-3xl text-xs leading-6 text-slate-400 sm:text-sm">
+                  <p className="text-xs sm:text-sm text-slate-300 mt-1 leading-relaxed">
                     {currentStep.description}
                   </p>
                 </div>
-              </div>
 
-              {/* Progress dots */}
-              <div className="flex shrink-0 items-center gap-1.5">
-                {Array.from({ length: visualStepCount }).map(
-                  (_, index) => (
+                {/* Progress Indicator */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {steps.map((_, i) => (
                     <button
-                      key={index}
+                      key={i}
                       type="button"
-                      onClick={() => {
-                        setIsPlaying(false);
-                        setActiveStep(index);
-                      }}
-                      className={`h-2 rounded-full transition-all ${
-                        index === activeStep
-                          ? 'w-7 bg-indigo-500'
-                          : index < activeStep
-                          ? 'w-2 bg-cyan-400'
-                          : 'w-2 bg-slate-700'
+                      onClick={() => { setIsPlaying(false); setActiveStep(i); }}
+                      className={`h-2 rounded-full transition-all cursor-pointer ${
+                        i === activeStep ? 'w-6 bg-indigo-500' : i < activeStep ? 'w-2 bg-cyan-400' : 'w-2 bg-slate-700'
                       }`}
-                      aria-label={`Go to step ${index + 1}`}
+                      aria-label={`Go to step ${i + 1}`}
                     />
-                  ),
-                )}
-              </div>
-            </div>
-
-            {currentStep.analogy && (
-              <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2.5">
-                <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-
-                <p className="text-[11px] leading-5 text-amber-200">
-                  <span className="font-bold text-amber-400">
-                    Analogy:
-                  </span>{' '}
-                  {currentStep.analogy}
-                </p>
+                  ))}
+                </div>
               </div>
             )}
           </div>
         )}
-
-        {/* ---------------------------------------------------------------- */}
-        {/* SELECTED NODE                                                    */}
-        {/* ---------------------------------------------------------------- */}
-
-        {selectedNode && (
-          <div className="mt-4 flex items-start gap-3 rounded-2xl border border-indigo-400/20 bg-indigo-500/5 p-4">
-            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-indigo-400" />
-
-            <div className="min-w-0">
-              <div className="text-xs font-bold text-indigo-300">
-                {selectedNode.label}
-              </div>
-
-              <p className="mt-1 text-[11px] leading-5 text-slate-400">
-                {selectedNode.sublabel ||
-                  `This node represents an important stage in ${queryTopic}.`}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setSelectedNode(null)}
-              className="ml-auto text-xs text-slate-500 hover:text-white"
-              aria-label="Close node details"
-            >
-              ×
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* FOOTER                                                             */}
-      {/* ------------------------------------------------------------------ */}
-
-      <div className="border-t border-white/10 bg-black/10 px-5 py-3 sm:px-7">
-        <div className="flex flex-col gap-2 text-[10px] text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-          <span>
-            Visual learning mode •{' '}
-            {visualMode === 'generic'
-              ? `${safeNodes.length} nodes`
-              : `${visualStepCount} animation stages`}
-          </span>
-
-          <span className="flex items-center gap-1">
-            <Sparkles className="h-3 w-3 text-indigo-400" />
-            {visualMode === 'generic'
-              ? 'Interactive concept flow'
-              : 'Animated educational visualization'}
-          </span>
-        </div>
       </div>
     </section>
   );

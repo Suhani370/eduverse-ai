@@ -36,6 +36,8 @@ export const QuizArena: React.FC = () => {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [secondsElapsed, setSecondsElapsed] = useState(0);
   const [quizTopicInput, setQuizTopicInput] = useState('');
+  const [questionCount, setQuestionCount] = useState<number>(5);
+  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
 
   const questions = activeQuiz?.questions || [];
   const currentQ: QuizQuestion | undefined = questions[currentIdx];
@@ -124,7 +126,7 @@ export const QuizArena: React.FC = () => {
   const handleNewQuizSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!quizTopicInput.trim()) return;
-    startQuizForTopic(quizTopicInput.trim());
+    startQuizForTopic(quizTopicInput.trim(), questionCount, difficulty);
     setQuizTopicInput('');
     setIsSubmitted(false);
     setUserAnswers({});
@@ -147,7 +149,7 @@ export const QuizArena: React.FC = () => {
             Test your understanding with conceptual questions, real-world application scenarios, and step-by-step diagnostic feedback.
           </p>
 
-          <form onSubmit={handleNewQuizSubmit} className="max-w-md mx-auto space-y-3">
+          <form onSubmit={handleNewQuizSubmit} className="max-w-md mx-auto space-y-4">
             <input
               type="text"
               value={quizTopicInput}
@@ -155,12 +157,60 @@ export const QuizArena: React.FC = () => {
               placeholder="Enter any topic: 'Photosynthesis', 'TCP vs UDP', 'Binary Search'..."
               className="w-full px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
             />
+
+            {/* Question count & difficulty selector */}
+            <div className="grid grid-cols-2 gap-3 text-left">
+              <div>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">
+                  Questions
+                </label>
+                <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
+                  {[3, 5, 10].map(cnt => (
+                    <button
+                      key={cnt}
+                      type="button"
+                      onClick={() => setQuestionCount(cnt)}
+                      className={`flex-1 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        questionCount === cnt
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {cnt} Qs
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">
+                  Difficulty
+                </label>
+                <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
+                  {(['easy', 'medium', 'hard'] as const).map(diff => (
+                    <button
+                      key={diff}
+                      type="button"
+                      onClick={() => setDifficulty(diff)}
+                      className={`flex-1 py-1 rounded-lg text-xs font-bold capitalize transition-all cursor-pointer ${
+                        difficulty === diff
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {diff}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <button
               type="submit"
               disabled={isLoading || !quizTopicInput.trim()}
               className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-sm shadow-md shadow-indigo-500/25 transition-all cursor-pointer"
             >
-              {isLoading ? 'Generating Smart Quiz...' : 'Generate Interactive Quiz'}
+              {isLoading ? 'Generating Smart Quiz...' : `Generate ${questionCount} Questions (${difficulty})`}
             </button>
           </form>
 
@@ -170,7 +220,7 @@ export const QuizArena: React.FC = () => {
               <button
                 key={topic}
                 type="button"
-                onClick={() => startQuizForTopic(topic)}
+                onClick={() => startQuizForTopic(topic, questionCount, difficulty)}
                 className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
               >
                 Quiz on {topic}

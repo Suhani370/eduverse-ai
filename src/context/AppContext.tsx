@@ -97,7 +97,11 @@ interface AppContextType {
 
   quizHistory: QuizResult[];
   recordQuizResult: (result: QuizResult) => void;
-  startQuizForTopic: (topic: string) => Promise<void>;
+  startQuizForTopic: (
+    topic: string,
+    questionCount?: number,
+    difficulty?: 'easy' | 'medium' | 'hard'
+  ) => Promise<void>;
 
   /* Theme */
   isDarkMode: boolean;
@@ -318,6 +322,9 @@ export const AppProvider: React.FC<{
 
   const [error, setError] =
     useState<string | null>(null);
+
+  const [conversationHistory, setConversationHistory] =
+    useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
 
   /* =======================================================
      NOTES
@@ -712,6 +719,7 @@ export const AppProvider: React.FC<{
               responseMode: mode,
               tonePrompt:
                 levelConfig?.tonePrompt,
+              conversationHistory,
             });
 
           if (!response) {
@@ -723,6 +731,12 @@ export const AppProvider: React.FC<{
           setActiveResponse(
             response
           );
+
+          setConversationHistory(prev => [
+            ...prev.slice(-8),
+            { role: 'user', content: cleanQuery },
+            { role: 'assistant', content: `${response.quickAnswer}\n${response.simpleExplanation}` }
+          ]);
 
           setCurrentView(
             'learn'
@@ -765,6 +779,7 @@ export const AppProvider: React.FC<{
         educationLevel,
         language,
         responseStyle,
+        conversationHistory,
         addToSearchHistory,
         saveNote,
       ]
@@ -833,7 +848,11 @@ export const AppProvider: React.FC<{
 
   const startQuizForTopic =
     useCallback(
-      async (topic: string) => {
+      async (
+        topic: string,
+        questionCount: number = 5,
+        difficulty: 'easy' | 'medium' | 'hard' = 'medium'
+      ) => {
         const cleanTopic =
           topic.trim();
 
@@ -850,7 +869,8 @@ export const AppProvider: React.FC<{
               cleanTopic,
               educationLevel,
               language,
-              5
+              questionCount,
+              difficulty
             );
 
           if (
