@@ -1,8 +1,10 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
+  useEffect,
+  useMemo,
   useState,
-  useEffect
 } from 'react';
 
 import {
@@ -14,7 +16,7 @@ import {
   StudyNote,
   UserStats,
   QuizResult,
-  QuizQuestion
+  QuizQuestion,
 } from '../types';
 
 import { DEMO_RESPONSES } from '../data/demoTopics';
@@ -22,10 +24,14 @@ import { DEMO_RESPONSES } from '../data/demoTopics';
 import {
   fetchEducationalResponse,
   generateStudyNotesApi,
-  generateQuizApi
+  generateQuizApi,
 } from '../services/api';
 
 import { EDUCATION_LEVELS } from '../data/constants';
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 export type ViewType =
   | 'landing'
@@ -38,10 +44,17 @@ export type ViewType =
   | 'saved'
   | 'settings';
 
+interface ActiveQuiz {
+  topic: string;
+  questions: QuizQuestion[];
+}
+
 interface AppContextType {
+  /* Navigation */
   currentView: ViewType;
   setCurrentView: (view: ViewType) => void;
 
+  /* Learning preferences */
   educationLevel: EducationLevel;
   setEducationLevel: (level: EducationLevel) => void;
 
@@ -54,12 +67,13 @@ interface AppContextType {
   responseMode: ResponseMode;
   setResponseMode: (mode: ResponseMode) => void;
 
+  /* Active learning session */
   activeQuery: string;
-  setActiveQuery: (q: string) => void;
+  setActiveQuery: (query: string) => void;
 
   activeResponse: StructuredEducationalResponse | null;
   setActiveResponse: (
-    resp: StructuredEducationalResponse | null
+    response: StructuredEducationalResponse | null
   ) => void;
 
   isLoading: boolean;
@@ -70,114 +84,212 @@ interface AppContextType {
     overrideMode?: ResponseMode
   ) => Promise<void>;
 
+  /* Notes */
   savedNotes: StudyNote[];
   saveNote: (note: StudyNote) => void;
   deleteNote: (id: string) => void;
   bookmarkNote: (id: string) => void;
   generateNotesForActiveTopic: () => Promise<void>;
 
-  activeQuiz: {
-    topic: string;
-    questions: QuizQuestion[];
-  } | null;
-
-  setActiveQuiz: (
-    quiz: {
-      topic: string;
-      questions: QuizQuestion[];
-    } | null
-  ) => void;
+  /* Quiz */
+  activeQuiz: ActiveQuiz | null;
+  setActiveQuiz: (quiz: ActiveQuiz | null) => void;
 
   quizHistory: QuizResult[];
-
   recordQuizResult: (result: QuizResult) => void;
-
   startQuizForTopic: (topic: string) => Promise<void>;
 
+  /* Theme */
   isDarkMode: boolean;
   toggleDarkMode: () => void;
 
+  /* Statistics */
   stats: UserStats;
 
+  /* History */
   recentSearches: string[];
-
   clearHistory: () => void;
 }
+
+/* =========================================================
+   CONTEXT
+========================================================= */
 
 const AppContext = createContext<AppContextType | undefined>(
   undefined
 );
 
-const STORAGE_KEY_NOTES = 'eduverse_saved_notes_v1';
-const STORAGE_KEY_STATS = 'eduverse_user_stats_v1';
-const STORAGE_KEY_HISTORY = 'eduverse_recent_searches_v1';
-const STORAGE_KEY_THEME = 'eduverse_dark_mode_v1';
-const STORAGE_KEY_LANG = 'eduverse_language_v1';
-const STORAGE_KEY_LEVEL = 'eduverse_level_v1';
+/* =========================================================
+   STORAGE KEYS
+========================================================= */
 
-/**
- * =========================================================
- * APP PROVIDER
- * =========================================================
- */
+const STORAGE_KEYS = {
+  NOTES: 'eduverse_saved_notes_v2',
+  STATS: 'eduverse_user_stats_v2',
+  HISTORY: 'eduverse_recent_searches_v2',
+  THEME: 'eduverse_dark_mode_v2',
+  LANGUAGE: 'eduverse_language_v2',
+  LEVEL: 'eduverse_level_v2',
+  QUIZ_HISTORY: 'eduverse_quiz_history_v2',
+} as const;
+
+/* =========================================================
+   DEFAULT VALUES
+========================================================= */
+
+const DEFAULT_STATS: UserStats = {
+  topicsLearnedCount: 0,
+  quizzesTakenCount: 0,
+  averageQuizScore: 0,
+  studyStreakDays: 0,
+  savedNotesCount: 0,
+};
+
+const DEFAULT_SEARCHES = [
+  'Explain photosynthesis with a visual flow',
+  'TCP vs UDP with real-world courier analogy',
+  'C++ code for Binary Search with line-by-line breakdown',
+  'Explain Nephron structure and filtration mechanism',
+];
+
+/* =========================================================
+   SAFE STORAGE HELPERS
+========================================================= */
+
+const readStorage = <T,>(
+  key: string,
+  fallback: T
+): T => {
+  try {
+    if (typeof window === 'undefined') {
+      return fallback;
+    }
+
+    const value = localStorage.getItem(key);
+
+    if (!value) {
+      return fallback;
+    }
+
+    return JSON.parse(value) as T;
+  } catch (error) {
+    console.warn(
+      `[EduVerse] Failed to read localStorage key: ${key}`,
+      error
+    );
+
+    return fallback;
+  }
+};
+
+const writeStorage = (
+  key: string,
+  value: unknown
+): void => {
+  try {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    localStorage.setItem(
+      key,
+      JSON.stringify(value)
+    );
+  } catch (error) {
+    console.warn(
+      `[EduVerse] Failed to write localStorage key: ${key}`,
+      error
+    );
+  }
+};
+
+const removeStorage = (
+  key: string
+): void => {
+  try {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    localStorage.removeItem(key);
+  } catch (error) {
+    console.warn(
+      `[EduVerse] Failed to remove localStorage key: ${key}`,
+      error
+    );
+  }
+};
+
+/* =========================================================
+   ERROR NORMALIZER
+========================================================= */
+
+const getErrorMessage = (
+  error: unknown,
+  fallback: string
+): string => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error
+  ) {
+    const message = (
+      error as { message?: unknown }
+    ).message;
+
+    if (typeof message === 'string') {
+      return message;
+    }
+  }
+
+  return fallback;
+};
+
+/* =========================================================
+   PROVIDER
+========================================================= */
 
 export const AppProvider: React.FC<{
   children: React.ReactNode;
 }> = ({ children }) => {
-  /**
-   * =======================================================
-   * BASIC APP STATE
-   * =======================================================
-   */
+  /* =======================================================
+     NAVIGATION
+  ======================================================= */
 
   const [currentView, setCurrentView] =
     useState<ViewType>('landing');
 
-  /**
-   * =======================================================
-   * EDUCATION LEVEL
-   * =======================================================
-   */
+  /* =======================================================
+     EDUCATION LEVEL
+  ======================================================= */
 
   const [educationLevel, setEducationLevelState] =
-    useState<EducationLevel>(() => {
-      try {
-        return (
-          (localStorage.getItem(
-            STORAGE_KEY_LEVEL
-          ) as EducationLevel) ||
-          'college_engineering'
-        );
-      } catch {
-        return 'college_engineering';
-      }
-    });
+    useState<EducationLevel>(() =>
+      readStorage<EducationLevel>(
+        STORAGE_KEYS.LEVEL,
+        'college_engineering'
+      )
+    );
 
-  /**
-   * =======================================================
-   * LANGUAGE
-   * =======================================================
-   */
+  /* =======================================================
+     LANGUAGE
+  ======================================================= */
 
   const [language, setLanguageState] =
-    useState<SupportedLanguage>(() => {
-      try {
-        return (
-          (localStorage.getItem(
-            STORAGE_KEY_LANG
-          ) as SupportedLanguage) ||
-          'English'
-        );
-      } catch {
-        return 'English';
-      }
-    });
+    useState<SupportedLanguage>(() =>
+      readStorage<SupportedLanguage>(
+        STORAGE_KEYS.LANGUAGE,
+        'English'
+      )
+    );
 
-  /**
-   * =======================================================
-   * RESPONSE SETTINGS
-   * =======================================================
-   */
+  /* =======================================================
+     RESPONSE PREFERENCES
+  ======================================================= */
 
   const [responseStyle, setResponseStyle] =
     useState<ResponseStyle>('normal');
@@ -185,128 +297,94 @@ export const AppProvider: React.FC<{
   const [responseMode, setResponseMode] =
     useState<ResponseMode>('comprehensive');
 
-  /**
-   * =======================================================
-   * ACTIVE LEARNING RESPONSE
-   * =======================================================
-   */
+  /* =======================================================
+     ACTIVE LEARNING SESSION
+  ======================================================= */
 
-  const [activeQuery, setActiveQuery] = useState<string>(
-    'Explain photosynthesis with a visual flow'
-  );
+  const [activeQuery, setActiveQuery] =
+    useState<string>(
+      'Explain photosynthesis with a visual flow'
+    );
 
   const [activeResponse, setActiveResponse] =
-    useState<StructuredEducationalResponse | null>(() => {
-      return DEMO_RESPONSES['photosynthesis'];
-    });
+    useState<StructuredEducationalResponse | null>(
+      () =>
+        DEMO_RESPONSES['photosynthesis'] ??
+        null
+    );
 
   const [isLoading, setIsLoading] =
-    useState<boolean>(false);
+    useState(false);
 
   const [error, setError] =
     useState<string | null>(null);
 
-  /**
-   * =======================================================
-   * SAVED NOTES
-   * =======================================================
-   */
+  /* =======================================================
+     NOTES
+  ======================================================= */
 
   const [savedNotes, setSavedNotes] =
-    useState<StudyNote[]>(() => {
-      try {
-        const stored =
-          localStorage.getItem(STORAGE_KEY_NOTES);
+    useState<StudyNote[]>(() =>
+      readStorage<StudyNote[]>(
+        STORAGE_KEYS.NOTES,
+        []
+      )
+    );
 
-        return stored ? JSON.parse(stored) : [];
-      } catch {
-        return [];
-      }
-    });
-
-  /**
-   * =======================================================
-   * QUIZ
-   * =======================================================
-   */
+  /* =======================================================
+     QUIZ
+  ======================================================= */
 
   const [activeQuiz, setActiveQuiz] =
-    useState<{
-      topic: string;
-      questions: QuizQuestion[];
-    } | null>(null);
+    useState<ActiveQuiz | null>(null);
 
   const [quizHistory, setQuizHistory] =
-    useState<QuizResult[]>([]);
+    useState<QuizResult[]>(() =>
+      readStorage<QuizResult[]>(
+        STORAGE_KEYS.QUIZ_HISTORY,
+        []
+      )
+    );
 
-  /**
-   * =======================================================
-   * USER STATS
-   * =======================================================
-   */
+  /* =======================================================
+     USER STATS
+  ======================================================= */
 
   const [stats, setStats] =
-    useState<UserStats>(() => {
-      try {
-        const stored =
-          localStorage.getItem(STORAGE_KEY_STATS);
+    useState<UserStats>(() =>
+      readStorage<UserStats>(
+        STORAGE_KEYS.STATS,
+        DEFAULT_STATS
+      )
+    );
 
-        return stored
-          ? JSON.parse(stored)
-          : {
-              topicsLearnedCount: 4,
-              quizzesTakenCount: 2,
-              averageQuizScore: 92,
-              studyStreakDays: 5,
-              savedNotesCount: 0
-            };
-      } catch {
-        return {
-          topicsLearnedCount: 4,
-          quizzesTakenCount: 2,
-          averageQuizScore: 92,
-          studyStreakDays: 5,
-          savedNotesCount: 0
-        };
-      }
-    });
-
-  /**
-   * =======================================================
-   * RECENT SEARCHES
-   * =======================================================
-   */
+  /* =======================================================
+     SEARCH HISTORY
+  ======================================================= */
 
   const [recentSearches, setRecentSearches] =
-    useState<string[]>(() => {
-      try {
-        const stored =
-          localStorage.getItem(STORAGE_KEY_HISTORY);
+    useState<string[]>(() =>
+      readStorage<string[]>(
+        STORAGE_KEYS.HISTORY,
+        DEFAULT_SEARCHES
+      )
+    );
 
-        return stored
-          ? JSON.parse(stored)
-          : [
-              'Explain photosynthesis with a visual flow',
-              'TCP vs UDP with real-world courier analogy',
-              'C++ code for Binary Search with line-by-line breakdown',
-              'Explain Nephron structure and filtration mechanism'
-            ];
-      } catch {
-        return [];
-      }
-    });
-
-  /**
-   * =======================================================
-   * DARK MODE
-   * =======================================================
-   */
+  /* =======================================================
+     THEME
+  ======================================================= */
 
   const [isDarkMode, setIsDarkMode] =
     useState<boolean>(() => {
       try {
+        if (typeof window === 'undefined') {
+          return false;
+        }
+
         const stored =
-          localStorage.getItem(STORAGE_KEY_THEME);
+          localStorage.getItem(
+            STORAGE_KEYS.THEME
+          );
 
         if (stored !== null) {
           return stored === 'true';
@@ -320,394 +398,388 @@ export const AppProvider: React.FC<{
       }
     });
 
-  /**
-   * =======================================================
-   * DARK MODE EFFECT
-   * =======================================================
-   */
+  /* =======================================================
+     THEME EFFECT
+  ======================================================= */
 
   useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-
-    localStorage.setItem(
-      STORAGE_KEY_THEME,
-      String(isDarkMode)
-    );
-  }, [isDarkMode]);
-
-  const toggleDarkMode = () => {
-    setIsDarkMode(prev => !prev);
-  };
-
-  /**
-   * =======================================================
-   * EDUCATION LEVEL SETTER
-   * =======================================================
-   */
-
-  const setEducationLevel = (
-    level: EducationLevel
-  ) => {
-    setEducationLevelState(level);
-
-    localStorage.setItem(
-      STORAGE_KEY_LEVEL,
-      level
-    );
-  };
-
-  /**
-   * =======================================================
-   * LANGUAGE SETTER
-   * =======================================================
-   *
-   * This is the value that gets sent to the backend.
-   */
-
-  const setLanguage = (
-    lang: SupportedLanguage
-  ) => {
-    setLanguageState(lang);
-
-    localStorage.setItem(
-      STORAGE_KEY_LANG,
-      lang
-    );
-
-    console.log(
-      '[EduVerse] Language changed to:',
-      lang
-    );
-  };
-
-  /**
-   * =======================================================
-   * SAVE NOTE
-   * =======================================================
-   */
-
-  const saveNote = (note: StudyNote) => {
-    setSavedNotes(prev => {
-      const filtered =
-        prev.filter(n => n.id !== note.id);
-
-      const updated = [
-        note,
-        ...filtered
-      ];
-
-      localStorage.setItem(
-        STORAGE_KEY_NOTES,
-        JSON.stringify(updated)
-      );
-
-      return updated;
-    });
-
-    setStats(prev => {
-      const alreadyExists =
-        savedNotes.some(
-          n => n.id === note.id
-        );
-
-      const upd = {
-        ...prev,
-
-        savedNotesCount:
-          alreadyExists
-            ? prev.savedNotesCount
-            : prev.savedNotesCount + 1
-      };
-
-      localStorage.setItem(
-        STORAGE_KEY_STATS,
-        JSON.stringify(upd)
-      );
-
-      return upd;
-    });
-  };
-
-  /**
-   * =======================================================
-   * DELETE NOTE
-   * =======================================================
-   */
-
-  const deleteNote = (id: string) => {
-    setSavedNotes(prev => {
-      const updated =
-        prev.filter(n => n.id !== id);
-
-      localStorage.setItem(
-        STORAGE_KEY_NOTES,
-        JSON.stringify(updated)
-      );
-
-      return updated;
-    });
-  };
-
-  /**
-   * =======================================================
-   * BOOKMARK NOTE
-   * =======================================================
-   */
-
-  const bookmarkNote = (id: string) => {
-    setSavedNotes(prev => {
-      const updated =
-        prev.map(note =>
-          note.id === id
-            ? {
-                ...note,
-                isBookmarked:
-                  !note.isBookmarked
-              }
-            : note
-        );
-
-      localStorage.setItem(
-        STORAGE_KEY_NOTES,
-        JSON.stringify(updated)
-      );
-
-      return updated;
-    });
-  };
-
-  /**
-   * =======================================================
-   * MAIN ASK QUESTION HANDLER
-   * =======================================================
-   */
-
-  const handleAskQuestion = async (
-    queryText: string,
-    overrideMode?: ResponseMode
-  ) => {
-    const cleanQuery =
-      queryText.trim();
-
-    if (!cleanQuery) {
+    if (typeof document === 'undefined') {
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
-    setActiveQuery(cleanQuery);
-
-    const mode =
-      overrideMode || responseMode;
-
-    /**
-     * ===============================================
-     * SEARCH HISTORY
-     * ===============================================
-     */
-
-    setRecentSearches(prev => {
-      const filtered =
-        prev.filter(
-          q =>
-            q.toLowerCase() !==
-            cleanQuery.toLowerCase()
-        );
-
-      const updated = [
-        cleanQuery,
-        ...filtered
-      ].slice(0, 10);
-
-      localStorage.setItem(
-        STORAGE_KEY_HISTORY,
-        JSON.stringify(updated)
-      );
-
-      return updated;
-    });
-
-    const levelConfig =
-      EDUCATION_LEVELS.find(
-        level =>
-          level.id === educationLevel
-      );
-
-    console.log(
-      '========================================'
-    );
-
-    console.log(
-      '[EduVerse] Sending educational request'
-    );
-
-    console.log(
-      'Question:',
-      cleanQuery
-    );
-
-    console.log(
-      'Language:',
-      language
-    );
-
-    console.log(
-      'Education:',
-      educationLevel
-    );
-
-    console.log(
-      'Style:',
-      responseStyle
-    );
-
-    console.log(
-      'Mode:',
-      mode
-    );
-
-    console.log(
-      '========================================'
+    document.documentElement.classList.toggle(
+      'dark',
+      isDarkMode
     );
 
     try {
-      /**
-       * =============================================
-       * NOTES MODE
-       * =============================================
-       */
+      localStorage.setItem(
+        STORAGE_KEYS.THEME,
+        String(isDarkMode)
+      );
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [isDarkMode]);
 
-      if (mode === 'notes') {
-        setCurrentView('notes');
+  const toggleDarkMode = useCallback(() => {
+    setIsDarkMode(
+      previous => !previous
+    );
+  }, []);
 
-        const note =
-          await generateStudyNotesApi(
-            cleanQuery,
-            educationLevel,
-            language
+  /* =======================================================
+     EDUCATION LEVEL
+  ======================================================= */
+
+  const setEducationLevel =
+    useCallback(
+      (level: EducationLevel) => {
+        setEducationLevelState(level);
+
+        try {
+          localStorage.setItem(
+            STORAGE_KEYS.LEVEL,
+            level
+          );
+        } catch {
+          // Ignore storage failures.
+        }
+      },
+      []
+    );
+
+  /* =======================================================
+     LANGUAGE
+  ======================================================= */
+
+  const setLanguage =
+    useCallback(
+      (lang: SupportedLanguage) => {
+        setLanguageState(lang);
+
+        try {
+          localStorage.setItem(
+            STORAGE_KEYS.LANGUAGE,
+            lang
+          );
+        } catch {
+          // Ignore storage failures.
+        }
+      },
+      []
+    );
+
+  /* =======================================================
+     SAVE NOTE
+  ======================================================= */
+
+  const saveNote = useCallback(
+    (note: StudyNote) => {
+      setSavedNotes(previous => {
+        const exists = previous.some(
+          item => item.id === note.id
+        );
+
+        const updated = [
+          note,
+          ...previous.filter(
+            item => item.id !== note.id
+          ),
+        ];
+
+        writeStorage(
+          STORAGE_KEYS.NOTES,
+          updated
+        );
+
+        if (!exists) {
+          setStats(previousStats => {
+            const updatedStats = {
+              ...previousStats,
+              savedNotesCount:
+                previousStats.savedNotesCount + 1,
+            };
+
+            writeStorage(
+              STORAGE_KEYS.STATS,
+              updatedStats
+            );
+
+            return updatedStats;
+          });
+        }
+
+        return updated;
+      });
+    },
+    []
+  );
+
+  /* =======================================================
+     DELETE NOTE
+  ======================================================= */
+
+  const deleteNote = useCallback(
+    (id: string) => {
+      setSavedNotes(previous => {
+        const existed = previous.some(
+          note => note.id === id
+        );
+
+        const updated =
+          previous.filter(
+            note => note.id !== id
           );
 
-        saveNote(note);
-
-        return;
-      }
-
-      /**
-       * =============================================
-       * QUIZ MODE
-       * =============================================
-       */
-
-      if (mode === 'quiz') {
-        setCurrentView('quiz');
-
-        await startQuizForTopic(
-          cleanQuery
+        writeStorage(
+          STORAGE_KEYS.NOTES,
+          updated
         );
 
-        return;
-      }
+        if (existed) {
+          setStats(previousStats => {
+            const updatedStats = {
+              ...previousStats,
+              savedNotesCount:
+                Math.max(
+                  0,
+                  previousStats.savedNotesCount - 1
+                ),
+            };
 
-      /**
-       * =============================================
-       * NORMAL LEARNING MODE
-       * =============================================
-       */
+            writeStorage(
+              STORAGE_KEYS.STATS,
+              updatedStats
+            );
 
-      const response =
-        await fetchEducationalResponse({
-          query: cleanQuery,
+            return updatedStats;
+          });
+        }
 
-          language,
+        return updated;
+      });
+    },
+    []
+  );
 
-          educationLevel,
+  /* =======================================================
+     BOOKMARK NOTE
+  ======================================================= */
 
-          responseStyle,
+  const bookmarkNote = useCallback(
+    (id: string) => {
+      setSavedNotes(previous => {
+        const updated =
+          previous.map(note =>
+            note.id === id
+              ? {
+                  ...note,
+                  isBookmarked:
+                    !note.isBookmarked,
+                }
+              : note
+          );
 
-          responseMode: mode,
-
-          tonePrompt:
-            levelConfig?.tonePrompt
-        });
-
-      /**
-       * =============================================
-       * RESPONSE VALIDATION
-       * =============================================
-       */
-
-      if (!response) {
-        throw new Error(
-          'The AI returned an empty response.'
-        );
-      }
-
-      console.log(
-        '[EduVerse] AI response received:',
-        response
-      );
-
-      /**
-       * =============================================
-       * SAVE RESPONSE
-       * =============================================
-       */
-
-      setActiveResponse(response);
-
-      setCurrentView('learn');
-
-      /**
-       * =============================================
-       * UPDATE STATS
-       * =============================================
-       */
-
-      setStats(prev => {
-        const updated = {
-          ...prev,
-
-          topicsLearnedCount:
-            prev.topicsLearnedCount + 1
-        };
-
-        localStorage.setItem(
-          STORAGE_KEY_STATS,
-          JSON.stringify(updated)
+        writeStorage(
+          STORAGE_KEYS.NOTES,
+          updated
         );
 
         return updated;
       });
+    },
+    []
+  );
 
-    } catch (err: any) {
-      console.error(
-        '[EduVerse] Error fetching question response:',
-        err
-      );
+  /* =======================================================
+     SEARCH HISTORY
+  ======================================================= */
 
-      setError(
-        err?.message ||
-        'Unable to generate response. Please try again.'
-      );
+  const addToSearchHistory =
+    useCallback(
+      (query: string) => {
+        setRecentSearches(previous => {
+          const normalized =
+            query.toLowerCase();
 
-    } finally {
-      setIsLoading(false);
-    }
-  };
+          const filtered =
+            previous.filter(
+              item =>
+                item.toLowerCase() !==
+                normalized
+            );
 
-  /**
-   * =======================================================
-   * GENERATE NOTES FOR ACTIVE TOPIC
-   * =======================================================
-   */
+          const updated = [
+            query,
+            ...filtered,
+          ].slice(0, 10);
+
+          writeStorage(
+            STORAGE_KEYS.HISTORY,
+            updated
+          );
+
+          return updated;
+        });
+      },
+      []
+    );
+
+  /* =======================================================
+     MAIN AI QUESTION HANDLER
+  ======================================================= */
+
+  const handleAskQuestion =
+    useCallback(
+      async (
+        queryText: string,
+        overrideMode?: ResponseMode
+      ) => {
+        const cleanQuery =
+          queryText.trim();
+
+        if (!cleanQuery || isLoading) {
+          return;
+        }
+
+        setIsLoading(true);
+        setError(null);
+        setActiveQuery(cleanQuery);
+
+        const mode =
+          overrideMode ?? responseMode;
+
+        addToSearchHistory(
+          cleanQuery
+        );
+
+        const levelConfig =
+          EDUCATION_LEVELS.find(
+            level =>
+              level.id ===
+              educationLevel
+          );
+
+        try {
+          /* -----------------------------------------------
+             NOTES MODE
+          ------------------------------------------------ */
+
+          if (mode === 'notes') {
+            setCurrentView('notes');
+
+            const note =
+              await generateStudyNotesApi(
+                cleanQuery,
+                educationLevel,
+                language
+              );
+
+            if (!note) {
+              throw new Error(
+                'Unable to generate study notes.'
+              );
+            }
+
+            saveNote(note);
+
+            return;
+          }
+
+          /* -----------------------------------------------
+             QUIZ MODE
+          ------------------------------------------------ */
+
+          if (mode === 'quiz') {
+            await startQuizForTopic(
+              cleanQuery
+            );
+
+            return;
+          }
+
+          /* -----------------------------------------------
+             NORMAL LEARNING MODE
+          ------------------------------------------------ */
+
+          const response =
+            await fetchEducationalResponse({
+              query: cleanQuery,
+              language,
+              educationLevel,
+              responseStyle,
+              responseMode: mode,
+              tonePrompt:
+                levelConfig?.tonePrompt,
+            });
+
+          if (!response) {
+            throw new Error(
+              'The AI returned an empty response.'
+            );
+          }
+
+          setActiveResponse(
+            response
+          );
+
+          setCurrentView(
+            'learn'
+          );
+
+          setStats(previous => {
+            const updated = {
+              ...previous,
+              topicsLearnedCount:
+                previous.topicsLearnedCount +
+                1,
+            };
+
+            writeStorage(
+              STORAGE_KEYS.STATS,
+              updated
+            );
+
+            return updated;
+          });
+        } catch (err) {
+          console.error(
+            '[EduVerse] AI request failed:',
+            err
+          );
+
+          setError(
+            getErrorMessage(
+              err,
+              'Unable to generate the learning response. Please try again.'
+            )
+          );
+        } finally {
+          setIsLoading(false);
+        }
+      },
+      [
+        isLoading,
+        responseMode,
+        educationLevel,
+        language,
+        responseStyle,
+        addToSearchHistory,
+        saveNote,
+      ]
+    );
+
+  /* =======================================================
+     GENERATE NOTES FOR ACTIVE TOPIC
+  ======================================================= */
 
   const generateNotesForActiveTopic =
-    async () => {
+    useCallback(async () => {
       if (!activeResponse) {
+        setError(
+          'No active topic is available.'
+        );
         return;
       }
 
@@ -722,136 +794,191 @@ export const AppProvider: React.FC<{
             language
           );
 
+        if (!note) {
+          throw new Error(
+            'No study note was generated.'
+          );
+        }
+
         saveNote(note);
 
-        setCurrentView('notes');
-
+        setCurrentView(
+          'notes'
+        );
       } catch (err) {
         console.error(
-          '[EduVerse] Failed to generate notes:',
+          '[EduVerse] Notes generation failed:',
           err
         );
 
         setError(
-          'Failed to generate study notes.'
+          getErrorMessage(
+            err,
+            'Failed to generate study notes.'
+          )
         );
-
       } finally {
         setIsLoading(false);
       }
-    };
-
-  /**
-   * =======================================================
-   * START QUIZ
-   * =======================================================
-   */
-
-  const startQuizForTopic =
-    async (topic: string) => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const quiz =
-          await generateQuizApi(
-            topic,
-            educationLevel,
-            language,
-            5
-          );
-
-        setActiveQuiz(quiz);
-
-        setCurrentView('quiz');
-
-      } catch (err) {
-        console.error(
-          '[EduVerse] Failed to load quiz:',
-          err
-        );
-
-        setError(
-          'Failed to load quiz. Please try again.'
-        );
-
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-  /**
-   * =======================================================
-   * RECORD QUIZ RESULT
-   * =======================================================
-   */
-
-  const recordQuizResult = (
-    result: QuizResult
-  ) => {
-    setQuizHistory(prev => [
-      result,
-      ...prev
+    }, [
+      activeResponse,
+      educationLevel,
+      language,
+      saveNote,
     ]);
 
-    setStats(prev => {
-      const newCount =
-        prev.quizzesTakenCount + 1;
+  /* =======================================================
+     START QUIZ
+  ======================================================= */
 
-      const newAverage =
-        Math.round(
-          (
-            prev.averageQuizScore *
-              prev.quizzesTakenCount +
-            result.percentage
-          ) / newCount
-        );
+  const startQuizForTopic =
+    useCallback(
+      async (topic: string) => {
+        const cleanTopic =
+          topic.trim();
 
-      const updated = {
-        ...prev,
+        if (!cleanTopic) {
+          return;
+        }
 
-        quizzesTakenCount:
-          newCount,
+        setIsLoading(true);
+        setError(null);
 
-        averageQuizScore:
-          newAverage,
+        try {
+          const quiz =
+            await generateQuizApi(
+              cleanTopic,
+              educationLevel,
+              language,
+              5
+            );
 
-        studyStreakDays:
-          prev.studyStreakDays + 1
-      };
+          if (
+            !quiz ||
+            !Array.isArray(
+              quiz.questions
+            ) ||
+            quiz.questions.length === 0
+          ) {
+            throw new Error(
+              'The AI did not return valid quiz questions.'
+            );
+          }
 
-      localStorage.setItem(
-        STORAGE_KEY_STATS,
-        JSON.stringify(updated)
-      );
+          setActiveQuiz({
+            topic:
+              quiz.topic ||
+              cleanTopic,
+            questions:
+              quiz.questions,
+          });
 
-      return updated;
-    });
-  };
+          setCurrentView(
+            'quiz'
+          );
+        } catch (err) {
+          console.error(
+            '[EduVerse] Quiz generation failed:',
+            err
+          );
 
-  /**
-   * =======================================================
-   * CLEAR SEARCH HISTORY
-   * =======================================================
-   */
-
-  const clearHistory = () => {
-    setRecentSearches([]);
-
-    localStorage.removeItem(
-      STORAGE_KEY_HISTORY
+          setError(
+            getErrorMessage(
+              err,
+              'Failed to generate quiz. Please try again.'
+            )
+          );
+        } finally {
+          setIsLoading(false);
+        }
+      },
+      [
+        educationLevel,
+        language,
+      ]
     );
-  };
 
-  /**
-   * =======================================================
-   * CONTEXT PROVIDER
-   * =======================================================
-   */
+  /* =======================================================
+     RECORD QUIZ RESULT
+  ======================================================= */
 
-  return (
-    <AppContext.Provider
-      value={{
+  const recordQuizResult =
+    useCallback(
+      (result: QuizResult) => {
+        setQuizHistory(previous => {
+          const updated = [
+            result,
+            ...previous,
+          ].slice(0, 50);
+
+          writeStorage(
+            STORAGE_KEYS.QUIZ_HISTORY,
+            updated
+          );
+
+          return updated;
+        });
+
+        setStats(previous => {
+          const previousCount =
+            previous.quizzesTakenCount;
+
+          const newCount =
+            previousCount + 1;
+
+          const newAverage =
+            Math.round(
+              (
+                previous.averageQuizScore *
+                  previousCount +
+                result.percentage
+              ) / newCount
+            );
+
+          const updated = {
+            ...previous,
+            quizzesTakenCount:
+              newCount,
+            averageQuizScore:
+              newAverage,
+            studyStreakDays:
+              Math.max(
+                previous.studyStreakDays,
+                1
+              ),
+          };
+
+          writeStorage(
+            STORAGE_KEYS.STATS,
+            updated
+          );
+
+          return updated;
+        });
+      },
+      []
+    );
+
+  /* =======================================================
+     CLEAR SEARCH HISTORY
+  ======================================================= */
+
+  const clearHistory =
+    useCallback(() => {
+      setRecentSearches([]);
+
+      removeStorage(
+        STORAGE_KEYS.HISTORY
+      );
+    }, []);
+
+  /* =======================================================
+     MEMOIZED CONTEXT VALUE
+  ======================================================= */
+
+  const contextValue =
+    useMemo<AppContextType>(
+      () => ({
         currentView,
         setCurrentView,
 
@@ -882,7 +1009,6 @@ export const AppProvider: React.FC<{
         saveNote,
         deleteNote,
         bookmarkNote,
-
         generateNotesForActiveTopic,
 
         activeQuiz,
@@ -890,7 +1016,6 @@ export const AppProvider: React.FC<{
 
         quizHistory,
         recordQuizResult,
-
         startQuizForTopic,
 
         isDarkMode,
@@ -899,27 +1024,60 @@ export const AppProvider: React.FC<{
         stats,
 
         recentSearches,
-        clearHistory
-      }}
+        clearHistory,
+      }),
+      [
+        currentView,
+        educationLevel,
+        language,
+        responseStyle,
+        responseMode,
+        activeQuery,
+        activeResponse,
+        isLoading,
+        error,
+        handleAskQuestion,
+        savedNotes,
+        saveNote,
+        deleteNote,
+        bookmarkNote,
+        generateNotesForActiveTopic,
+        activeQuiz,
+        quizHistory,
+        recordQuizResult,
+        startQuizForTopic,
+        isDarkMode,
+        toggleDarkMode,
+        stats,
+        recentSearches,
+        clearHistory,
+      ]
+    );
+
+  /* =======================================================
+     PROVIDER
+  ======================================================= */
+
+  return (
+    <AppContext.Provider
+      value={contextValue}
     >
       {children}
     </AppContext.Provider>
   );
 };
 
-/**
- * =========================================================
- * USE APP HOOK
- * =========================================================
- */
+/* =========================================================
+   USE APP HOOK
+========================================================= */
 
-export const useApp = () => {
+export const useApp = (): AppContextType => {
   const context =
     useContext(AppContext);
 
   if (!context) {
     throw new Error(
-      'useApp must be used within an AppProvider'
+      'useApp must be used inside an AppProvider.'
     );
   }
 

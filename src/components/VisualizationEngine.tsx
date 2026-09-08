@@ -733,7 +733,7 @@ export const VisualizationEngine: React.FC<
     ];
   }, [nodes]);
 
-  const safeSteps = useMemo(() => {
+  const safeSteps: VisualizationStep[] = useMemo(() => {
     if (steps.length > 0) return steps;
 
     return safeNodes.map((node, index) => ({
@@ -742,6 +742,7 @@ export const VisualizationEngine: React.FC<
       description:
         node.sublabel ||
         `This is step ${index + 1} of the ${queryTopic} process.`,
+      analogy: undefined,
     }));
   }, [steps, safeNodes, queryTopic]);
 

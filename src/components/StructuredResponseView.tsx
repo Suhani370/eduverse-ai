@@ -1,559 +1,421 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import { StructuredEducationalResponse } from '../types';
+import { VisualizationEngine } from './VisualizationEngine';
+import { CodeLab } from './CodeLab';
+import { ComparisonView } from './ComparisonView';
+import { MedicalDisclaimerBanner } from './MedicalDisclaimerBanner';
+import { useApp } from '../context/AppContext';
 import {
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  CircleDot,
-  Cpu,
-  Database,
-  GitBranch,
-  Layers,
-  Lightbulb,
-  Play,
-  RotateCcw,
-  Server,
   Sparkles,
-  Square,
-  Target,
-  Zap,
+  BookOpen,
+  Lightbulb,
+  CheckCircle2,
+  AlertTriangle,
+  Layers,
+  HelpCircle,
+  FileText,
+  Copy,
+  Check,
+  RotateCcw,
+  Share2,
+  GraduationCap,
+  BrainCircuit,
+  MessageSquare,
+  Flame,
+  ArrowRight,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
-interface VisualizationNode {
-  id: string;
-  label: string;
-  sublabel?: string;
-  icon?: string;
-  color?: string;
+interface StructuredResponseViewProps {
+  data: StructuredEducationalResponse;
 }
 
-interface VisualizationEdge {
-  from: string;
-  to: string;
-  label?: string;
-}
+export const StructuredResponseView: React.FC<StructuredResponseViewProps> = ({ data }) => {
+  const {
+    saveNote,
+    startQuizForTopic,
+    handleAskQuestion,
+    educationLevel,
+    language
+  } = useApp();
 
-interface VisualizationStep {
-  stepNumber: number;
-  title: string;
-  description: string;
-  analogy?: string;
-}
+  const [copied, setCopied] = useState(false);
+  const [flippedCards, setFlippedCards] = useState<Record<number, boolean>>({});
+  const [showFullDetailed, setShowFullDetailed] = useState(true);
 
-interface VisualizationData {
-  type?: string;
-  title?: string;
-  description?: string;
-  nodes?: VisualizationNode[];
-  edges?: VisualizationEdge[];
-  steps?: VisualizationStep[];
-}
+  const handleCopyExplanation = () => {
+    const textToCopy = `# ${data.query}\n\n## Quick Answer\n${data.quickAnswer}\n\n## Simple Explanation\n${data.simpleExplanation}\n\n## Detailed Explanation\n${data.detailedExplanation}\n\n## Key Takeaways\n${data.keyPoints?.map(p => `- ${p}`).join('\n') || ''}`;
+    navigator.clipboard.writeText(textToCopy);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
-interface VisualizationEngineProps {
-  data: VisualizationData;
-  queryTopic?: string;
-}
+  const handleSaveToNotes = () => {
+    saveNote({
+      id: 'note-' + Date.now(),
+      topic: data.query,
+      subject: 'Academic & Applied Sciences',
+      educationLevel,
+      language,
+      createdAt: new Date().toISOString(),
+      tags: [data.query, educationLevel, 'High-Yield'],
+      summary: data.quickAnswer,
+      contentMarkdown: `# ${data.query}\n\n## Executive Summary\n${data.quickAnswer}\n\n## Intuitive Explanation\n${data.simpleExplanation}\n\n## Conceptual Deep-Dive\n${data.detailedExplanation}`,
+      keyPoints: data.keyPoints || [],
+      examTips: data.examTips || []
+    });
+    alert('Saved to Study Notes Studio!');
+  };
 
-const iconMap: Record<string, React.ElementType> = {
-  Zap,
-  Cpu,
-  Check,
-  Database,
-  Server,
-  Target,
-  Lightbulb,
-  GitBranch,
-  Layers,
-  Sparkles,
-  CircleDot,
-};
-
-const fallbackColors = [
-  '#6366f1',
-  '#06b6d4',
-  '#22c55e',
-  '#f59e0b',
-  '#ec4899',
-  '#8b5cf6',
-];
-
-const getIcon = (icon?: string) => {
-  if (!icon) return Sparkles;
-  return iconMap[icon] || Sparkles;
-};
-
-export const VisualizationEngine: React.FC<
-  VisualizationEngineProps
-> = ({ data, queryTopic = 'Concept' }) => {
-  const nodes = Array.isArray(data?.nodes) ? data.nodes : [];
-  const edges = Array.isArray(data?.edges) ? data.edges : [];
-  const steps = Array.isArray(data?.steps) ? data.steps : [];
-
-  const safeNodes = useMemo(() => {
-    if (nodes.length > 0) return nodes;
-
-    return [
-      {
-        id: 'input',
-        label: 'Input',
-        sublabel: 'Starting point',
-        icon: 'Zap',
-        color: '#6366f1',
-      },
-      {
-        id: 'process',
-        label: 'Process',
-        sublabel: 'Core mechanism',
-        icon: 'Cpu',
-        color: '#22c55e',
-      },
-      {
-        id: 'output',
-        label: 'Output',
-        sublabel: 'Final result',
-        icon: 'Check',
-        color: '#f59e0b',
-      },
-    ];
-  }, [nodes]);
-
-  const safeSteps = useMemo(() => {
-    if (steps.length > 0) return steps;
-
-    return safeNodes.map((node, index) => ({
-      stepNumber: index + 1,
-      title: node.label,
-      description:
-        node.sublabel ||
-        `This is step ${index + 1} of the ${queryTopic} process.`,
+  const toggleCardFlip = (idx: number) => {
+    setFlippedCards(prev => ({
+      ...prev,
+      [idx]: !prev[idx]
     }));
-  }, [steps, safeNodes, queryTopic]);
-
-  const [activeStep, setActiveStep] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [selectedNode, setSelectedNode] =
-    useState<VisualizationNode | null>(null);
-
-  useEffect(() => {
-    if (!isPlaying) return;
-
-    const timer = window.setInterval(() => {
-      setActiveStep((current) => {
-        if (current >= safeSteps.length - 1) {
-          setIsPlaying(false);
-          return current;
-        }
-
-        return current + 1;
-      });
-    }, 2600);
-
-    return () => window.clearInterval(timer);
-  }, [isPlaying, safeSteps.length]);
-
-  const currentStep = safeSteps[activeStep] || safeSteps[0];
-
-  const resetVisualization = () => {
-    setIsPlaying(false);
-    setActiveStep(0);
-    setSelectedNode(null);
-  };
-
-  const previousStep = () => {
-    setIsPlaying(false);
-    setActiveStep((current) => Math.max(0, current - 1));
-  };
-
-  const nextStep = () => {
-    setIsPlaying(false);
-    setActiveStep((current) =>
-      Math.min(safeSteps.length - 1, current + 1)
-    );
-  };
-
-  const isNodeActive = (index: number) => {
-    if (safeSteps.length === 0) return false;
-    return index <= activeStep;
-  };
-
-  const getNodeColor = (node: VisualizationNode, index: number) => {
-    return node.color || fallbackColors[index % fallbackColors.length];
   };
 
   return (
-    <section className="w-full overflow-hidden rounded-[28px] border border-slate-800 bg-[#05091c] text-white shadow-2xl">
-      {/* =========================================================
-          HEADER
-      ========================================================= */}
-      <div className="border-b border-white/10 px-5 py-5 sm:px-7">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <div className="mb-2 flex items-center gap-2">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-500/15 text-indigo-400 ring-1 ring-indigo-400/20">
-                <Layers className="h-5 w-5" />
-              </div>
+    <div className="w-full space-y-6 pb-8 animate-in fade-in duration-300" id="structured-response-container">
+      {/* Medical Disclaimer if health/biological */}
+      {data.medicalDisclaimer && <MedicalDisclaimerBanner />}
 
-              <h2 className="truncate text-base font-extrabold sm:text-lg">
-                {data.title || `${queryTopic} — Visual Flow`}
-              </h2>
-
-              <span className="hidden rounded-full bg-indigo-500/15 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-indigo-300 ring-1 ring-indigo-400/20 sm:inline-flex">
-                Interactive Visual
-              </span>
+      {/* 1. Quick Answer & Key Definition Banner */}
+      <section className="bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-6 sm:p-7 border border-indigo-800/60 shadow-xl relative overflow-hidden">
+        <div className="relative z-10">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-xs font-bold">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Core Conceptual Takeaway</span>
             </div>
 
-            <p className="ml-11 max-w-3xl text-xs leading-relaxed text-slate-400">
-              {data.description ||
-                `Step-by-step visual explanation of ${queryTopic}.`}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCopyExplanation}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-xs transition-colors cursor-pointer"
+                title="Copy Full Explanation"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                <span className="hidden xs:inline">{copied ? 'Copied' : 'Copy'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveToNotes}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                title="Save into Notes Studio"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span className="hidden xs:inline">Save Note</span>
+              </button>
+            </div>
+          </div>
+
+          <p className="text-base sm:text-lg font-semibold leading-relaxed text-indigo-50">
+            {data.quickAnswer}
+          </p>
+        </div>
+      </section>
+
+      {/* 2. Intuitive Breakdown & Real-World Analogy */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+        {/* Simple Beginner Explanation */}
+        <section className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-2.5 mb-3 text-indigo-600 dark:text-indigo-400">
+              <BookOpen className="w-5 h-5" />
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                Intuitive Explanation
+              </h3>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+              {data.simpleExplanation}
             </p>
           </div>
 
-          {/* Controls */}
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={previousStep}
-              disabled={activeStep === 0}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-              title="Previous step"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsPlaying((value) => !value)}
-              className={`flex h-9 items-center gap-2 rounded-xl px-4 text-xs font-bold transition ${
-                isPlaying
-                  ? 'bg-amber-500 text-black'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-500'
-              }`}
-            >
-              {isPlaying ? (
-                <>
-                  <Square className="h-3.5 w-3.5 fill-current" />
-                  Pause
-                </>
-              ) : (
-                <>
-                  <Play className="h-3.5 w-3.5 fill-current" />
-                  Auto Play
-                </>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={nextStep}
-              disabled={activeStep >= safeSteps.length - 1}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-              title="Next step"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={resetVisualization}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10"
-              title="Reset"
-            >
-              <RotateCcw className="h-4 w-4" />
-            </button>
+          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 font-medium">
+            <span>Adapted for {data.educationLevel?.replace('_', ' ') || 'Learner'}</span>
+            <span className="font-semibold text-indigo-600 dark:text-indigo-400">{data.language || 'English'}</span>
           </div>
-        </div>
-      </div>
+        </section>
 
-      {/* =========================================================
-          FLOW AREA
-      ========================================================= */}
-      <div className="px-4 py-6 sm:px-7 sm:py-8">
-        <div className="mb-4 flex items-center justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-300">
-            Interactive Architecture &amp; Flow
-          </span>
-
-          <span className="text-[10px] text-slate-500">
-            Click any node for details
-          </span>
-        </div>
-
-        {/* Desktop flow */}
-        <div className="hidden overflow-x-auto pb-3 md:block">
-          <div className="flex min-w-max items-center justify-center gap-3">
-            {safeNodes.map((node, index) => {
-              const Icon = getIcon(node.icon);
-              const color = getNodeColor(node, index);
-              const active = isNodeActive(index);
-              const selected = selectedNode?.id === node.id;
-
-              return (
-                <React.Fragment key={node.id}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedNode(node)}
-                    className={`group relative w-[205px] rounded-2xl border p-4 text-left transition-all duration-500 ${
-                      selected
-                        ? 'scale-[1.03] border-indigo-400 bg-indigo-500/15 shadow-lg shadow-indigo-950/50'
-                        : active
-                        ? 'border-white/20 bg-[#101a32] shadow-lg'
-                        : 'border-white/10 bg-[#0c1428] opacity-70 hover:opacity-100'
-                    }`}
-                  >
-                    {/* Active glow */}
-                    {active && (
-                      <span
-                        className="absolute inset-0 -z-0 rounded-2xl opacity-20 blur-xl"
-                        style={{ backgroundColor: color }}
-                      />
-                    )}
-
-                    <div className="relative z-10">
-                      <div className="mb-3 flex items-center justify-between">
-                        <div
-                          className="flex h-10 w-10 items-center justify-center rounded-xl"
-                          style={{
-                            backgroundColor: `${color}22`,
-                            color,
-                          }}
-                        >
-                          <Icon className="h-5 w-5" />
-                        </div>
-
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
-                          Step {index + 1}
-                        </span>
-                      </div>
-
-                      <div className="text-sm font-bold text-white">
-                        {node.label}
-                      </div>
-
-                      {node.sublabel && (
-                        <div className="mt-1 text-[11px] leading-relaxed text-slate-400">
-                          {node.sublabel}
-                        </div>
-                      )}
-
-                      <div
-                        className="mt-4 h-1 rounded-full transition-all duration-500"
-                        style={{
-                          backgroundColor: active ? color : '#1e293b',
-                          width: active ? '100%' : '35%',
-                        }}
-                      />
-                    </div>
-                  </button>
-
-                  {index < safeNodes.length - 1 && (
-                    <div className="flex w-16 shrink-0 flex-col items-center gap-1">
-                      <div className="relative h-[2px] w-full overflow-hidden rounded-full bg-slate-800">
-                        <div
-                          className="absolute left-0 top-0 h-full rounded-full transition-all duration-700"
-                          style={{
-                            width: activeStep > index ? '100%' : '0%',
-                            background:
-                              'linear-gradient(90deg,#6366f1,#22d3ee)',
-                          }}
-                        />
-                      </div>
-
-                      <ArrowRight
-                        className={`h-4 w-4 transition-colors ${
-                          activeStep > index
-                            ? 'text-cyan-400'
-                            : 'text-slate-700'
-                        }`}
-                      />
-
-                      {edges[index]?.label && (
-                        <span className="max-w-16 truncate text-[8px] font-semibold uppercase tracking-wider text-slate-500">
-                          {edges[index].label}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Mobile flow */}
-        <div className="space-y-3 md:hidden">
-          {safeNodes.map((node, index) => {
-            const Icon = getIcon(node.icon);
-            const color = getNodeColor(node, index);
-            const active = isNodeActive(index);
-
-            return (
-              <React.Fragment key={node.id}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedNode(node)}
-                  className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition-all ${
-                    active
-                      ? 'border-indigo-400/40 bg-[#101a32]'
-                      : 'border-white/10 bg-[#0c1428]'
-                  }`}
-                >
-                  <div
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-                    style={{
-                      backgroundColor: `${color}22`,
-                      color,
-                    }}
-                  >
-                    <Icon className="h-5 w-5" />
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-bold text-white">
-                      {node.label}
-                    </div>
-
-                    <div className="mt-0.5 text-[11px] text-slate-400">
-                      {node.sublabel || `Step ${index + 1}`}
-                    </div>
-                  </div>
-
-                  <span className="text-[9px] font-bold uppercase text-slate-500">
-                    {index + 1}/{safeNodes.length}
-                  </span>
-                </button>
-
-                {index < safeNodes.length - 1 && (
-                  <div className="ml-9 flex h-6 items-center">
-                    <div
-                      className={`h-full w-[2px] ${
-                        activeStep > index
-                          ? 'bg-cyan-400'
-                          : 'bg-slate-800'
-                      }`}
-                    />
-                    <ChevronRight className="-ml-1 h-4 w-4 rotate-90 text-slate-600" />
-                  </div>
-                )}
-              </React.Fragment>
-            );
-          })}
-        </div>
-
-        {/* =========================================================
-            CURRENT STEP
-        ========================================================= */}
-        {currentStep && (
-          <div className="mt-7 rounded-2xl border border-white/10 bg-[#080f24] p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/15 text-indigo-400">
-                  <span className="text-sm font-extrabold">
-                    {currentStep.stepNumber}
-                  </span>
-                </div>
-
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-indigo-400">
-                    Step {currentStep.stepNumber} of {safeSteps.length}
-                  </div>
-
-                  <h3 className="mt-1 text-sm font-extrabold text-white sm:text-base">
-                    {currentStep.title}
-                  </h3>
-
-                  <p className="mt-2 max-w-3xl text-xs leading-6 text-slate-400 sm:text-sm">
-                    {currentStep.description}
-                  </p>
-                </div>
+        {/* Real-World Analogy */}
+        {data.realWorldAnalogy && (
+          <section className="bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent dark:from-amber-950/30 dark:via-slate-900 dark:to-slate-900 rounded-3xl border border-amber-200 dark:border-amber-900/50 p-6 shadow-sm flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-2.5 mb-2 text-amber-600 dark:text-amber-400">
+                <Lightbulb className="w-5 h-5" />
+                <h3 className="text-sm font-bold uppercase tracking-wider text-amber-950 dark:text-amber-200">
+                  Real-World Analogy
+                </h3>
               </div>
 
-              {/* Progress dots */}
-              <div className="flex shrink-0 items-center gap-1.5">
-                {safeSteps.map((_, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={() => {
-                      setIsPlaying(false);
-                      setActiveStep(index);
-                    }}
-                    className={`h-2 rounded-full transition-all ${
-                      index === activeStep
-                        ? 'w-7 bg-indigo-500'
-                        : index < activeStep
-                        ? 'w-2 bg-cyan-400'
-                        : 'w-2 bg-slate-700'
-                    }`}
-                    aria-label={`Go to step ${index + 1}`}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {currentStep.analogy && (
-              <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2.5">
-                <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-
-                <p className="text-[11px] leading-5 text-amber-200">
-                  <span className="font-bold text-amber-400">
-                    Analogy:
-                  </span>{' '}
-                  {currentStep.analogy}
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* =========================================================
-            SELECTED NODE DETAILS
-        ========================================================= */}
-        {selectedNode && (
-          <div className="mt-4 flex items-start gap-3 rounded-2xl border border-indigo-400/20 bg-indigo-500/5 p-4">
-            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-indigo-400" />
-
-            <div className="min-w-0">
-              <div className="text-xs font-bold text-indigo-300">
-                {selectedNode.label}
+              <div className="text-xs sm:text-sm font-bold text-amber-900 dark:text-amber-300 mb-2">
+                "{data.realWorldAnalogy.analogy}"
               </div>
 
-              <p className="mt-1 text-[11px] leading-5 text-slate-400">
-                {selectedNode.sublabel ||
-                  `This node represents an important stage in ${queryTopic}.`}
+              <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                {data.realWorldAnalogy.explanation}
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setSelectedNode(null)}
-              className="ml-auto text-xs text-slate-500 hover:text-white"
-              aria-label="Close node details"
-            >
-              ×
-            </button>
-          </div>
+            {data.realWorldAnalogy.targetContext && (
+              <div className="mt-4 pt-3 border-t border-amber-200/60 dark:border-amber-900/40 text-[11px] text-amber-800 dark:text-amber-400 font-medium flex items-center gap-1.5">
+                <span className="font-bold">Mental Model:</span>
+                <span>{data.realWorldAnalogy.targetContext}</span>
+              </div>
+            )}
+          </section>
         )}
       </div>
 
-      {/* =========================================================
-          FOOTER
-      ========================================================= */}
-      <div className="border-t border-white/10 bg-black/10 px-5 py-3 sm:px-7">
-        <div className="flex flex-col gap-2 text-[10px] text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-          <span>
-            Visual learning mode • {safeNodes.length} nodes •{' '}
-            {safeSteps.length} steps
-          </span>
+      {/* 3. Interactive Visualization Engine */}
+      {data.visualization && (
+        <section className="w-full">
+          <VisualizationEngine
+            data={data.visualization}
+            queryTopic={data.query}
+          />
+        </section>
+      )}
 
-          <span className="flex items-center gap-1">
-            <Sparkles className="h-3 w-3 text-indigo-400" />
-            Click nodes or use Auto Play
-          </span>
+      {/* 4. Comparative Analysis if available */}
+      {data.comparison && (
+        <section className="w-full">
+          <ComparisonView data={data.comparison} />
+        </section>
+      )}
+
+      {/* 5. Code & Algorithm Lab if available */}
+      {data.codeBlock && (
+        <section className="w-full">
+          <CodeLab data={data.codeBlock} />
+        </section>
+      )}
+
+      {/* 6. Detailed Academic Breakdown with LaTeX KaTeX */}
+      <section className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 shadow-sm">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800 mb-5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+              <GraduationCap className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white">
+                Comprehensive Technical Deep-Dive
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Rigorous theory, mechanisms, and mathematical formulations
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowFullDetailed(prev => !prev)}
+            className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"
+            title={showFullDetailed ? 'Collapse Deep Dive' : 'Expand Deep Dive'}
+          >
+            {showFullDetailed ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+          </button>
         </div>
+
+        {showFullDetailed && (
+          <div className="prose prose-slate dark:prose-invert max-w-none text-xs sm:text-sm leading-relaxed">
+            <ReactMarkdown
+              remarkPlugins={[remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+            >
+              {data.detailedExplanation}
+            </ReactMarkdown>
+          </div>
+        )}
+      </section>
+
+      {/* 7. Key Points & Common Misconceptions Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+        {/* High-Yield Key Points */}
+        {data.keyPoints && data.keyPoints.length > 0 && (
+          <section className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+            <div className="flex items-center gap-2 mb-4 text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="w-5 h-5" />
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                High-Yield Key Takeaways
+              </h3>
+            </div>
+
+            <ul className="space-y-2.5">
+              {data.keyPoints.map((point, idx) => (
+                <li key={idx} className="flex items-start gap-2.5 text-xs sm:text-sm text-slate-700 dark:text-slate-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-2 shrink-0" />
+                  <span className="leading-relaxed">{point}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {/* Common Misconceptions */}
+        {data.commonMistakes && data.commonMistakes.length > 0 && (
+          <section className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+            <div className="flex items-center gap-2 mb-4 text-rose-500">
+              <AlertTriangle className="w-5 h-5" />
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                Common Misconceptions & Corrections
+              </h3>
+            </div>
+
+            <div className="space-y-3">
+              {data.commonMistakes.map((item, idx) => (
+                <div key={idx} className="p-3.5 rounded-2xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 text-xs">
+                  <div className="font-bold text-rose-800 dark:text-rose-300 mb-1 flex items-start gap-1.5">
+                    <span className="text-rose-500 font-bold shrink-0">❌ Misconception:</span>
+                    <span>{item.mistake}</span>
+                  </div>
+                  <div className="text-slate-700 dark:text-slate-300 pl-4 border-l-2 border-emerald-500 mt-1.5 leading-relaxed">
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400">✓ Fact: </span>
+                    {item.correction}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
-    </section>
+
+      {/* 8. Interactive Quick Revision Flip Cards */}
+      {data.quickRevisionCards && data.quickRevisionCards.length > 0 && (
+        <section className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-7 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <BrainCircuit className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                Active Recall Revision Cards
+              </h3>
+            </div>
+            <span className="text-[11px] text-slate-400">Click any card to flip</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {data.quickRevisionCards.map((card, idx) => {
+              const isFlipped = flippedCards[idx];
+
+              return (
+                <div
+                  key={idx}
+                  onClick={() => toggleCardFlip(idx)}
+                  className={`min-h-[130px] p-4 rounded-2xl border transition-all cursor-pointer select-none flex flex-col justify-between ${
+                    isFlipped
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/20'
+                      : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200/80 dark:border-slate-700/60 hover:border-indigo-400'
+                  }`}
+                >
+                  <div className="text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span className={isFlipped ? 'text-indigo-200' : 'text-slate-400'}>
+                      Card {idx + 1} • {isFlipped ? 'Answer' : 'Question'}
+                    </span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded ${isFlipped ? 'bg-indigo-700 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                      {isFlipped ? 'Flipped' : 'Click to flip'}
+                    </span>
+                  </div>
+
+                  <p className={`text-xs sm:text-sm font-medium leading-relaxed ${isFlipped ? 'text-white font-semibold' : 'text-slate-900 dark:text-slate-100'}`}>
+                    {isFlipped ? card.back : card.front}
+                  </p>
+
+                  <div className="mt-2 text-[10px] font-semibold text-right opacity-70">
+                    {isFlipped ? 'Tap to see question' : 'Tap to reveal answer'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* 9. Practice Questions & Exam Strategy */}
+      {(data.practiceQuestions?.length || data.examTips?.length || data.interviewQuestions?.length) ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+          {/* Practice Questions */}
+          {data.practiceQuestions && data.practiceQuestions.length > 0 && (
+            <section className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+              <div className="flex items-center gap-2 mb-4 text-indigo-600 dark:text-indigo-400">
+                <HelpCircle className="w-5 h-5" />
+                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                  Practice & Application Exercises
+                </h3>
+              </div>
+
+              <div className="space-y-2.5">
+                {data.practiceQuestions.map((q, idx) => (
+                  <div key={idx} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 text-xs text-slate-800 dark:text-slate-200 flex items-start gap-2">
+                    <span className="font-bold text-indigo-600 dark:text-indigo-400 shrink-0">Q{idx + 1}.</span>
+                    <span className="leading-relaxed">{q}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Exam Tips / Interview Questions */}
+          <section className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+            <div className="flex items-center gap-2 mb-4 text-amber-500">
+              <Flame className="w-5 h-5" />
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                Exam Scoring Tips & High-Yield Tactics
+              </h3>
+            </div>
+
+            <div className="space-y-2.5">
+              {(data.examTips || data.interviewQuestions || []).map((tip, idx) => (
+                <div key={idx} className="p-3 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 text-xs text-amber-950 dark:text-amber-200 flex items-start gap-2">
+                  <span className="font-bold text-amber-600 shrink-0">★ Tip {idx + 1}:</span>
+                  <span className="leading-relaxed">{tip}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {/* 10. Action Launcher Footer */}
+      <section className="bg-gradient-to-r from-indigo-50 to-cyan-50 dark:from-indigo-950/40 dark:to-cyan-950/40 rounded-3xl border border-indigo-100 dark:border-indigo-900/50 p-6 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+            Ready to test your mastery or save this material?
+          </h4>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Generate an adaptive self-assessment or save exam notes to your workspace.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => startQuizForTopic(data.query)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
+          >
+            <HelpCircle className="w-4 h-4" />
+            <span>Generate Diagnostic Quiz</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSaveToNotes}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-bold transition-all cursor-pointer"
+          >
+            <FileText className="w-4 h-4" />
+            <span>Save to Notes Studio</span>
+          </button>
+        </div>
+      </section>
+    </div>
   );
 };
 
-export default VisualizationEngine;
+export default StructuredResponseView;

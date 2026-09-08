@@ -21,26 +21,70 @@ export const DocumentLearning: React.FC = () => {
 
   const [documentText, setDocumentText] = useState('');
   const [fileName, setFileName] = useState('');
+  const [fileSize, setFileSize] = useState<string>('');
   const [selectedAction, setSelectedAction] = useState<string>('summary');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [insights, setInsights] = useState<any | null>(null);
 
+  const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setErrorMessage(null);
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setErrorMessage(`File exceeds 10MB limit (${(file.size / (1024 * 1024)).toFixed(1)}MB). Please choose a smaller document.`);
+      return;
+    }
+
+    if (file.size === 0) {
+      setErrorMessage('The selected file is empty. Please choose a valid document.');
+      return;
+    }
+
     setFileName(file.name);
+    setFileSize((file.size / 1024).toFixed(1) + ' KB');
+    setUploadProgress(20);
+
     const reader = new FileReader();
+
+    reader.onprogress = (evt) => {
+      if (evt.lengthComputable) {
+        const percent = Math.round((evt.loaded / evt.total) * 100);
+        setUploadProgress(percent);
+      }
+    };
+
     reader.onload = (event) => {
       const content = event.target?.result as string;
+      if (!content || !content.trim()) {
+        setErrorMessage('Could not extract readable text from this file. If it is a binary PDF/Doc, please copy and paste the text below.');
+        setUploadProgress(null);
+        return;
+      }
       setDocumentText(content);
+      setUploadProgress(100);
+      setTimeout(() => setUploadProgress(null), 1000);
     };
+
+    reader.onerror = () => {
+      setErrorMessage('Failed to read file. Please try pasting the text manually.');
+      setUploadProgress(null);
+    };
+
     reader.readAsText(file);
   };
 
   const handleRunAnalysis = async () => {
-    if (!documentText.trim()) return;
+    if (!documentText.trim()) {
+      setErrorMessage('Please upload a document or paste text to analyze.');
+      return;
+    }
 
+    setErrorMessage(null);
     setIsAnalyzing(true);
     try {
       const res = await analyzeDocumentApi(
@@ -51,8 +95,9 @@ export const DocumentLearning: React.FC = () => {
         educationLevel
       );
       setInsights(res);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setErrorMessage(err.message || 'Failed to analyze document. Please check your network and try again.');
     } finally {
       setIsAnalyzing(false);
     }
@@ -94,6 +139,39 @@ export const DocumentLearning: React.FC = () => {
         </div>
       </div>
 
+      {/* Error Alert with Retry */}
+      {errorMessage && (
+        <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 flex items-start justify-between gap-3 animate-in fade-in">
+          <div className="flex items-start gap-2.5 text-xs text-rose-800 dark:text-rose-300">
+            <span className="font-bold shrink-0">⚠️ Error:</span>
+            <span>{errorMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleRunAnalysis}
+            className="px-3 py-1 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shrink-0 cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Upload Progress */}
+      {uploadProgress !== null && (
+        <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50 space-y-1.5">
+          <div className="flex items-center justify-between text-xs text-indigo-700 dark:text-indigo-300 font-semibold">
+            <span>Reading {fileName || 'Document'} ({fileSize})...</span>
+            <span>{uploadProgress}%</span>
+          </div>
+          <div className="w-full h-1.5 bg-indigo-200 dark:bg-indigo-900 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-indigo-600 transition-all duration-200"
+              style={{ width: `${uploadProgress}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Upload and Input Console */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-7 shadow-sm space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -101,14 +179,14 @@ export const DocumentLearning: React.FC = () => {
           <label className="border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 rounded-2xl p-6 text-center cursor-pointer transition-all bg-slate-50/50 dark:bg-slate-800/30 flex flex-col items-center justify-center min-h-[160px]">
             <UploadCloud className="w-8 h-8 text-indigo-500 mb-2" />
             <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-              {fileName ? fileName : 'Upload Text, PDF, or Notes file'}
+              {fileName ? `${fileName} (${fileSize})` : 'Upload Text, PDF, or Notes file'}
             </span>
             <span className="text-[11px] text-slate-400 mt-1">
-              Supports .txt, .md, .csv, and textbook lecture notes
+              Supports .txt, .md, .csv, .json, and textbook notes (Max 10MB)
             </span>
             <input
               type="file"
-              accept=".txt,.md,.json,.csv,.doc"
+              accept=".txt,.md,.json,.csv,.doc,.pdf"
               onChange={handleFileUpload}
               className="hidden"
             />
