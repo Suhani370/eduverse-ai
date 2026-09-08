@@ -294,9 +294,9 @@ export const StructuredResponseView: React.FC<StructuredResponseViewProps> = ({ 
               title: data.query,
               description: data.quickAnswer,
               nodes: [
-                { id: '1', label: 'Start', type: 'start', description: 'Initial state' },
-                { id: '2', label: data.detectedTopic || 'Core Process', type: 'process', description: data.quickAnswer },
-                { id: '3', label: 'End / Result', type: 'end', description: 'Final state' }
+                { id: '1', label: 'Start', sublabel: 'Initial State', icon: 'CircleDot', details: 'Initial precondition' },
+                { id: '2', label: data.detectedTopic || 'Core Mechanism', sublabel: 'Execution', icon: 'Cpu', details: data.quickAnswer },
+                { id: '3', label: 'Completion', sublabel: 'Outcome', icon: 'Check', details: 'Final verified result' }
               ],
               steps: [
                 { stepNumber: 1, title: 'Step 1: Initialization', description: 'Setting up preconditions', activeNodeIds: ['1'] },

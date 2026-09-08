@@ -11,9 +11,7 @@ dotenv.config();
 
 const PORT = Number(process.env.PORT) || 3000;
 const CANDIDATE_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-1.5-flash",
+  "gemini-2.5-flash"
 ];
 
 /**

@@ -63,16 +63,19 @@ export interface VisualEdge {
   animated?: boolean;
 }
 
+export interface VisualizationStep {
+  stepNumber: number;
+  title: string;
+  description: string;
+  analogy?: string;
+  activeNodeIds?: string[];
+}
+
 export interface VisualizationData {
   type: 'flowchart' | 'process' | 'comparison' | 'hierarchy' | 'timeline' | 'cycle' | 'architecture';
   title: string;
   description?: string;
-  steps?: {
-    stepNumber: number;
-    title: string;
-    description: string;
-    analogy?: string;
-  }[];
+  steps?: VisualizationStep[];
   nodes?: VisualNode[];
   edges?: VisualEdge[];
   comparisonColumns?: {

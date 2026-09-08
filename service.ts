@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { GoogleGenAI } from "@google/genai";
 
 /**
@@ -27,9 +28,7 @@ export interface LearningRequest {
 }
 
 const CANDIDATE_MODELS: string[] = [
-  "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-1.5-flash",
+  "gemini-2.5-flash"
 ];
 
 function getGeminiClient(): GoogleGenAI {
@@ -263,24 +262,91 @@ function stripMarkdownJson(text: string): string {
   return trimmed;
 }
 
+function sanitizeControlCharactersInJson(str: string): string {
+  let result = '';
+  let inString = false;
+  let isEscaped = false;
+
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+
+    if (inString) {
+      if (isEscaped) {
+        result += ch;
+        isEscaped = false;
+      } else if (ch === '\\') {
+        result += ch;
+        isEscaped = true;
+      } else if (ch === '"') {
+        result += ch;
+        inString = false;
+      } else if (ch === '\n') {
+        result += '\\n';
+      } else if (ch === '\r') {
+        result += '\\r';
+      } else if (ch === '\t') {
+        result += '\\t';
+      } else {
+        result += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inString = true;
+      }
+      result += ch;
+    }
+  }
+
+  return result;
+}
+
 function parseJson(text: string): any {
   const cleaned = stripMarkdownJson(text);
 
   try {
     return JSON.parse(cleaned);
   } catch {
-    // Attempt fallback heuristic cleanup
-    const repaired = cleaned
-      .replace(/,\s*([\]}])/g, "$1") // trailing commas
-      .replace(/[\u201C\u201D]/g, '"') // smart quotes
-      .replace(/[\u2018\u2019]/g, "'");
-
+    // Strategy 1: Sanitize control characters (unescaped newlines / tabs inside strings)
+    const sanitized = sanitizeControlCharactersInJson(cleaned);
     try {
-      return JSON.parse(repaired);
+      return JSON.parse(sanitized);
     } catch {
-      throw new Error(
-        "EduVerse AI received malformed structured output from the model. Please try asking again."
-      );
+      // Strategy 2: Fix trailing commas and smart quotes
+      let repaired = sanitized
+        .replace(/,\s*([\]}])/g, "$1") // trailing commas
+        .replace(/[\u201C\u201D]/g, '"') // smart quotes
+        .replace(/[\u2018\u2019]/g, "'"); // smart single quotes
+
+      try {
+        return JSON.parse(repaired);
+      } catch {
+        // Strategy 3: Fix LaTeX backslashes in JSON strings
+        try {
+          const latexFixed = repaired.replace(/\\([a-zA-Z])/g, (match, p1) => {
+            if (!['b', 'f', 'n', 'r', 't', 'u', '"', '\\', '/'].includes(p1)) {
+              return `\\\\${p1}`;
+            }
+            return match;
+          });
+          return JSON.parse(latexFixed);
+        } catch {
+          // Strategy 4: Slice outermost valid braces
+          const firstBrace = text.indexOf('{');
+          const lastBrace = text.lastIndexOf('}');
+          if (firstBrace >= 0 && lastBrace > firstBrace) {
+            try {
+              const rawSlice = sanitizeControlCharactersInJson(text.slice(firstBrace, lastBrace + 1));
+              return JSON.parse(rawSlice);
+            } catch {
+              // Proceed to error
+            }
+          }
+
+          throw new Error(
+            "EduVerse AI received malformed structured output from the model. Please try asking again."
+          );
+        }
+      }
     }
   }
 }
@@ -569,7 +635,11 @@ MATHEMATICAL NOTATION:
 VISUALIZATION RULES:
 - Always generate domain-specific visual nodes (e.g. for TCP: Client, SYN, Server, SYN-ACK, ACK, Established; for Binary Search: Low, Mid, High, Search Space; for Photosynthesis: Light, Water, CO2, Chloroplast, Glucose, Oxygen).
 - Avoid generic "Input -> Process -> Output" labels.
-- Set 3D objects when concept has spatial/molecular representation.
+CRITICAL JSON FORMATTING RULES:
+- Return ONLY valid parseable JSON. No conversational preamble or trailing commentary.
+- Inside JSON string fields, NEVER use unescaped double quotes (use single quotes 'like this' instead).
+- Escape all backslashes in LaTeX equations properly (e.g. \\\\Delta, \\\\log, \\\\frac).
+- Do not output trailing commas.
 
 Return ONLY valid JSON matching this structure:
 {
@@ -724,24 +794,45 @@ Generate the complete structured EduVerse response adhering to all language, lev
       throw new Error("Model returned an empty response.");
     }
 
-    const parsed = parseJson(rawText);
-    const normalized = normalizeResponse(parsed, analysis, request);
-    return normalized;
+    try {
+      const parsed = parseJson(rawText);
+      const normalized = normalizeResponse(parsed, analysis, request);
+      return normalized;
+    } catch (parseErr: any) {
+      console.error("[EduVerse AI] JSON Parse failed. Raw output preview:", rawText.slice(0, 300));
+      console.error("[EduVerse AI] Parse error message:", parseErr?.message || parseErr);
+      throw parseErr;
+    }
   }
 
   let lastError: any = null;
 
   for (const model of CANDIDATE_MODELS) {
-    try {
-      console.log(`[EduVerse AI] Generating answer with ${model}...`);
-      return await callModel(model);
-    } catch (err: any) {
-      lastError = err;
-      console.warn(`[EduVerse AI] Model ${model} failed, trying fallback:`, err?.message || err);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        console.log(`[EduVerse AI] Generating answer with ${model} (attempt ${attempt + 1})...`);
+        return await callModel(model);
+      } catch (err: any) {
+        lastError = err;
+        const errMsg = err?.message || String(err);
+        
+        // Check if rate limited (429)
+        const isRateLimited = errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED");
+        if (isRateLimited && attempt < 4) {
+          const match = errMsg.match(/retry in ([\d.]+)s/i) || errMsg.match(/"retryDelay":\s*"(\d+)s"/i);
+          const waitSec = match ? Math.ceil(parseFloat(match[1])) + 2 : (attempt + 1) * 8;
+          console.warn(`[EduVerse AI] Rate limited on ${model}. Waiting ${waitSec}s before automatic retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitSec * 1000));
+          continue;
+        }
+
+        console.warn(`[EduVerse AI] Model ${model} failed:`, errMsg);
+        break;
+      }
     }
   }
 
   throw new Error(
-    `Failed to generate response across candidate models: ${lastError?.message || lastError}`
+    `Failed to generate response: ${lastError?.message || lastError}`
   );
 }
