@@ -28,7 +28,10 @@ export interface LearningRequest {
 }
 
 const CANDIDATE_MODELS: string[] = [
-  "gemini-2.5-flash"
+  "gemini-3.5-flash",
+  "gemini-flash-latest",
+  "gemini-3.5-flash-lite",
+  "gemini-2.5-flash",
 ];
 
 function getGeminiClient(): GoogleGenAI {
@@ -384,8 +387,12 @@ function extractJsonSubBlock(
   const closeChar = isArray ? ']' : '}';
   const startIdx = source.indexOf('"' + key + '"');
   if (startIdx === -1) return null;
-  const blockStart = source.indexOf(openChar, startIdx);
-  if (blockStart === -1) return null;
+  const colonIdx = source.indexOf(':', startIdx);
+  if (colonIdx === -1) return null;
+  const afterColon = source.slice(colonIdx + 1, colonIdx + 20).trimStart();
+  if (afterColon.startsWith('null')) return null;
+  const blockStart = source.indexOf(openChar, colonIdx);
+  if (blockStart === -1 || blockStart > colonIdx + 15) return null;
 
   let depth = 0;
   let inString = false;
@@ -900,8 +907,11 @@ Generate the complete structured EduVerse response adhering to all language, lev
   ) {
     const config: any = {
       systemInstruction,
-      maxOutputTokens: getTokenBudget(analysis.intent),
+      maxOutputTokens: 8192,
       temperature: 0.2,
+      thinkingConfig: {
+        thinkingBudget: 0,
+      },
     };
     if (useJsonMode) {
       config.responseMimeType = "application/json";

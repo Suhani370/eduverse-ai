@@ -11,7 +11,10 @@ dotenv.config();
 
 const PORT = Number(process.env.PORT) || 3000;
 const CANDIDATE_MODELS = [
-  "gemini-2.5-flash"
+  "gemini-3.5-flash",
+  "gemini-flash-latest",
+  "gemini-3.5-flash-lite",
+  "gemini-2.5-flash",
 ];
 
 /**
@@ -75,6 +78,10 @@ async function generateGeminiJson(options: {
           systemInstruction: options.systemInstruction,
           responseMimeType: "application/json",
           temperature: options.temperature ?? 0.2,
+          maxOutputTokens: 8192,
+          thinkingConfig: {
+            thinkingBudget: 0,
+          },
         },
       });
 
