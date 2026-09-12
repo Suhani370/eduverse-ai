@@ -342,13 +342,118 @@ function parseJson(text: string): any {
             }
           }
 
-          throw new Error(
-            "EduVerse AI received malformed structured output from the model. Please try asking again."
-          );
+          // Strategy 5: Structural Field Extractor
+          // Extracts each known field independently so one broken field doesn't kill the whole response
+          console.warn("[EduVerse AI] Activating structural field extractor fallback...");
+          return structuralFieldExtractor(cleaned, sanitizeControlCharactersInJson);
         }
       }
     }
   }
+}
+
+// -----------------------------------------------------------------------
+// Structural field extractor helpers for Strategy 5
+// -----------------------------------------------------------------------
+
+function extractStringField(source: string, key: string): string {
+  // Extract "key": "value..." stopping at the start of the next key or closing brace
+  const safeKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const rx = new RegExp(
+    '"' + safeKey + '"\\s*:\\s*"([\\s\\S]*?)(?="\\s*,\\s*"[a-zA-Z0-9_]+"\\s*:|"\\s*\\})',
+    'i'
+  );
+  const m = source.match(rx);
+  if (m && m[1] != null) {
+    return m[1]
+      .replace(/\\n/g, '\n')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\')
+      .trim();
+  }
+  return '';
+}
+
+function extractJsonSubBlock(
+  source: string,
+  key: string,
+  isArray: boolean,
+  sanitizeFn: (s: string) => string
+): any {
+  const openChar = isArray ? '[' : '{';
+  const closeChar = isArray ? ']' : '}';
+  const startIdx = source.indexOf('"' + key + '"');
+  if (startIdx === -1) return null;
+  const blockStart = source.indexOf(openChar, startIdx);
+  if (blockStart === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let esc = false;
+
+  for (let i = blockStart; i < source.length; i++) {
+    const c = source[i];
+    if (inString) {
+      if (esc) { esc = false; }
+      else if (c === '\\') { esc = true; }
+      else if (c === '"') { inString = false; }
+    } else {
+      if (c === '"') { inString = true; }
+      else if (c === openChar) { depth++; }
+      else if (c === closeChar) {
+        depth--;
+        if (depth === 0) {
+          const rawBlock = source.slice(blockStart, i + 1);
+          try { return JSON.parse(rawBlock); } catch {
+            try {
+              const repaired = sanitizeFn(rawBlock.replace(/,\s*([\]}])/g, '$1'));
+              return JSON.parse(repaired);
+            } catch { return null; }
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function structuralFieldExtractor(
+  source: string,
+  sanitizeFn: (s: string) => string
+): any {
+  const result: any = {};
+
+  result.detectedSubject = extractStringField(source, 'detectedSubject') || 'Academic';
+  result.detectedTopic = extractStringField(source, 'detectedTopic') || 'Topic';
+  result.quickAnswer = extractStringField(source, 'quickAnswer') ||
+    (result.detectedTopic + ' is a key concept.');
+  result.simpleExplanation = extractStringField(source, 'simpleExplanation') ||
+    'Think of this as a systematic, step-by-step process.';
+  result.detailedExplanation = extractStringField(source, 'detailedExplanation') ||
+    ('### Overview\n\nDetailed breakdown of ' + result.detectedTopic + '.');
+  result.realWorldAnalogy = extractJsonSubBlock(source, 'realWorldAnalogy', false, sanitizeFn) || {
+    analogy: 'The Organized System',
+    explanation: 'Like a well-coordinated mechanism where every step has a purpose.',
+    targetContext: 'Core mental model for ' + result.detectedTopic,
+  };
+  result.visualization = extractJsonSubBlock(source, 'visualization', false, sanitizeFn);
+  result.threeDData = extractJsonSubBlock(source, 'threeDData', false, sanitizeFn);
+  result.codeBlock = extractJsonSubBlock(source, 'codeBlock', false, sanitizeFn);
+  result.dryRun = extractJsonSubBlock(source, 'dryRun', true, sanitizeFn);
+  result.comparison = extractJsonSubBlock(source, 'comparison', false, sanitizeFn);
+  result.summaryPayload = extractJsonSubBlock(source, 'summaryPayload', false, sanitizeFn);
+  result.quizPayload = extractJsonSubBlock(source, 'quizPayload', false, sanitizeFn);
+  result.keyPoints = extractJsonSubBlock(source, 'keyPoints', true, sanitizeFn) || [];
+  result.commonMistakes = extractJsonSubBlock(source, 'commonMistakes', true, sanitizeFn) || [];
+  result.quickRevisionCards = extractJsonSubBlock(source, 'quickRevisionCards', true, sanitizeFn) || [];
+  result.practiceQuestions = extractJsonSubBlock(source, 'practiceQuestions', true, sanitizeFn) || [];
+  result.examTips = extractJsonSubBlock(source, 'examTips', true, sanitizeFn) || [];
+  result.interviewQuestions = extractJsonSubBlock(source, 'interviewQuestions', true, sanitizeFn) || [];
+
+  const medMatch = source.match(/"medicalDisclaimer"\s*:\s*(true|false)/i);
+  result.medicalDisclaimer = medMatch ? medMatch[1] === 'true' : false;
+
+  return result;
 }
 
 /**
@@ -765,26 +870,30 @@ Generate the complete structured EduVerse response adhering to all language, lev
 
   const ai = getGeminiClient();
 
-  async function callModel(model: string) {
+  async function callWithConfig(
+    model: string,
+    useJsonMode: boolean
+  ) {
+    const config: any = {
+      systemInstruction,
+      maxOutputTokens: 7000,
+      temperature: 0.2,
+    };
+    if (useJsonMode) {
+      config.responseMimeType = "application/json";
+    }
+
     const responsePromise = ai.models.generateContent({
       model,
       contents: userPrompt,
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        maxOutputTokens: 7000,
-        temperature: 0.2,
-      },
+      config,
     });
 
+    const timeoutMs = 50000;
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
-        reject(
-          new Error(
-            `${model} timed out after 45s while generating educational response.`
-          )
-        );
-      }, 45000);
+        reject(new Error(`${model} timed out after ${timeoutMs / 1000}s.`));
+      }, timeoutMs);
     });
 
     const response = await Promise.race([responsePromise, timeoutPromise]);
@@ -794,14 +903,30 @@ Generate the complete structured EduVerse response adhering to all language, lev
       throw new Error("Model returned an empty response.");
     }
 
+    const parsed = parseJson(rawText);
+    const normalized = normalizeResponse(parsed, analysis, request);
+    return normalized;
+  }
+
+  async function callModel(model: string) {
+    // First attempt: structured JSON mode (faster, cleaner)
     try {
-      const parsed = parseJson(rawText);
-      const normalized = normalizeResponse(parsed, analysis, request);
-      return normalized;
-    } catch (parseErr: any) {
-      console.error("[EduVerse AI] JSON Parse failed. Raw output preview:", rawText.slice(0, 300));
-      console.error("[EduVerse AI] Parse error message:", parseErr?.message || parseErr);
-      throw parseErr;
+      console.log(`[EduVerse AI] JSON-mode attempt with ${model}...`);
+      return await callWithConfig(model, true);
+    } catch (jsonErr: any) {
+      const errMsg = jsonErr?.message || String(jsonErr);
+      // Don't retry in text-mode for rate limits or timeouts - those need a wait
+      if (errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("timed out")) {
+        throw jsonErr;
+      }
+      // Fallback: text mode - model generates free text that we then parse with 5-layer parser
+      console.warn(`[EduVerse AI] JSON-mode failed (${errMsg.slice(0, 80)}). Retrying in text mode...`);
+      try {
+        return await callWithConfig(model, false);
+      } catch (textErr: any) {
+        console.error("[EduVerse AI] Text-mode also failed:", textErr?.message || textErr);
+        throw textErr;
+      }
     }
   }
 

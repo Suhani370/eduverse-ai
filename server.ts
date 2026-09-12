@@ -80,7 +80,16 @@ async function generateGeminiJson(options: {
 
       const raw = response.text || "{}";
       const cleaned = stripMarkdownJson(raw);
-      return JSON.parse(cleaned);
+      // Multi-layer robust parse: direct -> sanitize controls -> trailing commas -> throw
+      try { return JSON.parse(cleaned); } catch { /* try repairs */ }
+      const sanitized = sanitizeControlCharsForJson(cleaned);
+      try { return JSON.parse(sanitized); } catch { /* try more */ }
+      const repaired = sanitized
+        .replace(/,\s*([\]}])/g, '$1')
+        .replace(/[\u201C\u201D]/g, '"')
+        .replace(/[\u2018\u2019]/g, "'");
+      try { return JSON.parse(repaired); } catch { /* give up */ }
+      throw new Error("Server-side JSON parse failed after all repair attempts.");
     } catch (err: any) {
       lastError = err;
       console.warn(`[EduVerse Server] Model ${model} generation failed, trying next...`);
