@@ -968,28 +968,29 @@ Generate the complete structured EduVerse response adhering to all language, lev
   let lastError: any = null;
 
   for (const model of CANDIDATE_MODELS) {
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        console.log(`[EduVerse AI] Generating answer with ${model} (attempt ${attempt + 1})...`);
-        return await callModel(model);
-      } catch (err: any) {
-        lastError = err;
-        const errMsg = err?.message || String(err);
-        
-        // Check if rate limited (429)
-        const isRateLimited = errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED");
-        if (isRateLimited && attempt < 4) {
-          const match = errMsg.match(/retry in ([\d.]+)s/i) || errMsg.match(/"retryDelay":\s*"(\d+)s"/i);
-          const waitSec = match ? Math.ceil(parseFloat(match[1])) + 2 : (attempt + 1) * 8;
-          console.warn(`[EduVerse AI] Rate limited on ${model}. Waiting ${waitSec}s before automatic retry...`);
-          await new Promise(resolve => setTimeout(resolve, waitSec * 1000));
-          continue;
-        }
-
-        console.warn(`[EduVerse AI] Model ${model} failed:`, errMsg);
-        break;
+    try {
+      console.log(`[EduVerse AI] Attempting model ${model}...`);
+      return await callModel(model);
+    } catch (err: any) {
+      lastError = err;
+      const errMsg = err?.message || String(err);
+      const isRateLimited = errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED");
+      if (isRateLimited) {
+        // Rate-limited: skip to next model immediately instead of waiting 60s per retry
+        console.warn(`[EduVerse AI] ${model} is rate-limited. Trying next candidate model...`);
+        continue;
       }
+      console.warn(`[EduVerse AI] Model ${model} failed (non-rate-limit):`, errMsg.slice(0, 120));
+      // Non-rate-limit errors (timeout, JSON parse) - try next model
     }
+  }
+
+  // All models failed - last resort: try gemini-2.5-flash with 1 retry if rate limits have cooled
+  console.warn("[EduVerse AI] All models failed. Attempting final retry on primary model...");
+  try {
+    return await callModel(CANDIDATE_MODELS[0]);
+  } catch (finalErr: any) {
+    lastError = finalErr;
   }
 
   throw new Error(
