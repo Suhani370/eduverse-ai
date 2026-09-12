@@ -870,13 +870,37 @@ Generate the complete structured EduVerse response adhering to all language, lev
 
   const ai = getGeminiClient();
 
+  // Intent-based token budget: smaller budgets = faster responses = fewer timeouts
+  function getTokenBudget(intent: string): number {
+    const budgets: Record<string, number> = {
+      summary: 2500,
+      notes: 4000,
+      quiz: 3500,
+      practice: 3000,
+      flashcards: 2500,
+      code: 4000,
+      dry_run: 3500,
+      visualize: 3500,
+      "3d_visualize": 3000,
+      compare: 3000,
+      formula: 3000,
+      derivation: 3500,
+      example: 3000,
+      interview: 3500,
+      exam_preparation: 3500,
+      follow_up: 3000,
+      explain: 4000,
+    };
+    return budgets[intent] || 4000;
+  }
+
   async function callWithConfig(
     model: string,
     useJsonMode: boolean
   ) {
     const config: any = {
       systemInstruction,
-      maxOutputTokens: 7000,
+      maxOutputTokens: getTokenBudget(analysis.intent),
       temperature: 0.2,
     };
     if (useJsonMode) {
@@ -889,7 +913,8 @@ Generate the complete structured EduVerse response adhering to all language, lev
       config,
     });
 
-    const timeoutMs = 50000;
+    // JSON mode needs more time since it can't stream partial results
+    const timeoutMs = useJsonMode ? 80000 : 60000;
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
         reject(new Error(`${model} timed out after ${timeoutMs / 1000}s.`));
